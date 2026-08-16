@@ -1,4 +1,4 @@
-# Simple Dock — DSH 底栏统计插件
+# Simple Dock V0.1 — DSH 底栏统计插件
 
 替换 DeepSeek Harness 网页端底栏的官方统计行，改成**左右双区、点击展开明细**的交互式统计坞。深浅色自适应，不依赖任何其他插件。
 
