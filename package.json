@@ -1,5 +1,5 @@
 {
-  "name": "@deepseek-ai/dsh-client-ui-simple-dock",
+  "name": "dsh-ui-simple-dock",
   "description": "Simple Dock: interactive composer stats dock for DeepSeek Harness — performance / brief / token / estimated-cost panels with glass styling",
   "version": "1.0.0",
   "type": "module",

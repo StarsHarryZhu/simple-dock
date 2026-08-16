@@ -1,7 +1,7 @@
 # AGENTS.md
 
 Agent guide for installing, building, and verifying **Simple Dock**
-(`@deepseek-ai/dsh-client-ui-simple-dock`) — a DSH web-client bundle that
+(`dsh-ui-simple-dock`) — a DSH web-client bundle that
 replaces the composer dock stats line with interactive performance / brief /
 token / estimated-cost panels.
 
@@ -15,37 +15,33 @@ token / estimated-cost panels.
   `slots` service. Everything else (token usage projection, model from session
   nodes, price table fetched in-browser with built-in fallback) is client-side.
 
-## Install
+## Install (manual — macOS / Linux)
 
-Preferred — run the installer (idempotent):
-
-```sh
-./install.sh
-```
-
-It does two things:
-
-1. Symlinks this directory into
-   `$DSH_HOME/profiles/node_modules/@deepseek-ai/dsh-client-ui-simple-dock`.
-2. Appends (if absent) to `$DSH_HOME/profiles/web/cordis.patch.yml`:
-
-   ```yaml
-   - insert:
-       - id: simple-dock
-         name: '@deepseek-ai/dsh-client-ui-simple-dock'
-   ```
-
-Manual equivalent:
+There are no install scripts; users install by hand (full tutorial in
+`README.md`):
 
 ```sh
+# 1. get the source and build (requires Node.js 18+)
+git clone <repo-url> simple-dock && cd simple-dock
+node build.js
+
+# 2. link the package root into the profile's hoisted node_modules
 DSH_HOME="${DSH_HOME:-$HOME/.dsh}"
-ln -sfn "$PWD" "$DSH_HOME/profiles/node_modules/@deepseek-ai/dsh-client-ui-simple-dock"
-# then append the insert row above to $DSH_HOME/profiles/web/cordis.patch.yml
+ln -sfn "$PWD" "$DSH_HOME/profiles/node_modules/dsh-ui-simple-dock"
+
+# 3. register the bundle: append to $DSH_HOME/profiles/web/cordis.patch.yml
+#    - insert:
+#        - id: simple-dock
+#          name: 'dsh-ui-simple-dock'
+
+# 4. restart DSH
 ```
 
 > `$DSH_HOME/profiles/node_modules` is a shared hoisted store: the symlink
 > target must be the package root (the directory containing `package.json`),
 > and the link name must be the exact package name (scoped path included).
+> Windows users: use a junction instead of a symlink
+> (`New-Item -ItemType Junction`), same patch row, same restart requirement.
 
 ## Activate
 
@@ -61,7 +57,7 @@ new bundle rows. After restart, the dynamic per-session copy of this plugin
 
    ```sh
    cd "$DSH_HOME/profiles" && node --input-type=module -e \
-     "const m = await import('@deepseek-ai/dsh-client-ui-simple-dock'); console.log(typeof m.apply)"
+     "const m = await import('dsh-ui-simple-dock'); console.log(typeof m.apply)"
    ```
 
    → prints `function`.
@@ -74,7 +70,10 @@ new bundle rows. After restart, the dynamic per-session copy of this plugin
 ## Uninstall
 
 ```sh
-./uninstall.sh   # removes the symlink and the patch row
+DSH_HOME="${DSH_HOME:-$HOME/.dsh}"
+rm "$DSH_HOME/profiles/node_modules/dsh-ui-simple-dock"
+# remove the - insert block for simple-dock from cordis.patch.yml
+# restart DSH
 ```
 
 ## Build
@@ -97,7 +96,6 @@ src/index.js        node half (empty apply — pure UI plugin)
 src/client/         prices.js · core.js · components.js · index.js · styles.css
 lib/                built outputs (committed for git installs)
 build.js            the bundler
-install.sh / uninstall.sh
 dynamic/            legacy session-scoped dynamic-plugin sources (not used)
 assets/ demo/       screenshots and recordings
 ```
@@ -109,5 +107,5 @@ assets/ demo/       screenshots and recordings
 - The settings plugin card and general rows are plain slot registrations
   (`settings.plugin.item` id `simple-dock`, `settings.general.item` ids
   `dstat-*`, composer dock id `stats` order 0).
-- CSS is injected as a `<style data-plugin="@deepseek-ai/dsh-client-ui-simple-dock">`
+- CSS is injected as a `<style data-plugin="dsh-ui-simple-dock">`
   tag owned by the fiber; keep that attribute so the loader can clean it up.

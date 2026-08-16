@@ -26,7 +26,7 @@ export function apply(ctx) {
   // the fiber disposer removes it on unload.
   ctx.effect(() => {
     const style = document.createElement('style')
-    style.setAttribute('data-plugin', '@deepseek-ai/dsh-client-ui-simple-dock')
+    style.setAttribute('data-plugin', 'dsh-ui-simple-dock')
     style.textContent = css
     document.head.appendChild(style)
     return () => { style.remove() }

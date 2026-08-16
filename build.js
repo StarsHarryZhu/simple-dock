@@ -21,7 +21,7 @@ const SRC = join(ROOT, 'src')
 const CLIENT_SRC = join(SRC, 'client')
 const LIB = join(ROOT, 'lib')
 
-const PACKAGE_NAME = '@deepseek-ai/dsh-client-ui-simple-dock'
+const PACKAGE_NAME = 'dsh-ui-simple-dock'
 
 const IMPORT_RE = /^import[\s\S]*?from '[^']*'\n/gm // 单行/多行 import 均匹配
 const EXPORT_RE = /^export /gm

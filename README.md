@@ -2,15 +2,68 @@
 
 替换 DeepSeek Harness 网页端底栏的官方统计行，改成**左右双区、点击展开明细**的交互式统计坞。深浅色自适应，不依赖任何其他插件。
 
-## 安装
+## 安装（手动，macOS / Linux）
+
+### 1. 获取源码
 
 ```sh
-./install.sh    # macOS / Linux：链接到 profile + 注册 bundle
+git clone <本仓库地址> simple-dock
+cd simple-dock
 ```
 
-然后**重启 DSH**（或刷新 Web 界面）生效。卸载：`./uninstall.sh`。
+（也可以直接下载 zip 解压；需要 **Node.js 18+**。）
 
-安装后会出现在 `设置 → 插件`（Simple Dock 卡片，可开关），设置项在 `设置 → 通用设置`。
+### 2. 构建
+
+```sh
+node build.js    # 生成 lib/（构建即语法校验 + 冒烟测试，全绿才继续）
+```
+
+### 3. 链接到 DSH profile
+
+```sh
+DSH_HOME="${DSH_HOME:-$HOME/.dsh}"
+ln -sfn "$PWD" "$DSH_HOME/profiles/node_modules/dsh-ui-simple-dock"
+```
+
+### 4. 注册 bundle
+
+编辑 `$DSH_HOME/profiles/web/cordis.patch.yml`，在文件末尾追加：
+
+```yaml
+- insert:
+    - id: simple-dock
+      name: 'dsh-ui-simple-dock'
+```
+
+### 5. 重启 DSH
+
+重启后自动生效（bundle **无需审批**）。验证：
+
+- 底栏出现 `步数 N` ｜ `命中率 X%`
+- `设置 → 插件` 出现 **Simple Dock** 卡片（可开关）
+- `设置 → 通用设置` 出现四行：底栏面板样式 / 价格表（实时）/ 成本计价币种 / 面板玻璃
+
+### 卸载
+
+```sh
+rm "$DSH_HOME/profiles/node_modules/dsh-ui-simple-dock"
+# 删除 cordis.patch.yml 里对应的 - insert 块
+# 重启 DSH
+```
+
+### Windows（PowerShell）
+
+```powershell
+# 1. 获取源码后执行 node build.js
+# 2. 链接（junction）
+New-Item -ItemType Junction -Path "$env:USERPROFILE\.dsh\profiles\node_modules\dsh-ui-simple-dock" -Target "C:\path\to\simple-dock"
+# 3. 编辑 $env:USERPROFILE\.dsh\profiles\web\cordis.patch.yml，追加：
+#    - insert:
+#        - id: simple-dock
+#          name: 'dsh-ui-simple-dock'
+# 4. 重启 DSH
+```
 
 ## 功能
 
@@ -55,13 +108,12 @@ node build.js    # 生成 lib/index.js（node 半区）+ lib/client.js（浏览�
 ```
 
 ```
-simple-dock/                # bundle 包（@deepseek-ai/dsh-client-ui-simple-dock）
+simple-dock/                # bundle 包（dsh-ui-simple-dock）
 ├── src/
 │   ├── index.js            #   node 半区（空 apply，纯 UI 插件）
 │   └── client/             #   浏览器半区：prices / core / components / index + styles.css
 ├── lib/                    # 构建产物（client.js = __ModuleLoader__.load 格式）
 ├── build.js                # 零依赖打包器
-├── install.sh / uninstall.sh
-├── assets/ + demo/         # 截图与录屏
-└── dynamic/                # 旧版动态插件（会话级，已不再需要）
+├── assets/                 # README 截图
+└── dynamic/                # 旧版动态插件源码（会话级，已不再需要）
 ```
