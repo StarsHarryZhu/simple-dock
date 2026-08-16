@@ -1,0 +1,291 @@
+/* client/styles.css — Simple Dock 全部样式。构建时由 build.js 注入为
+   styles.insert 的模板字符串；类名使用 dsstat- 前缀避免与宿主冲突。 */
+
+.dsstat-root {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 24px;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: var(--dsh-composer-card-max-width, calc(var(--dsh-chat-content-width, 748px) + 32px));
+  margin: 0 auto;
+  padding: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--dsw-alias-label-secondary);
+  font-family: var(--dsw-font-family);
+}
+.dsstat-seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border-radius: 7px;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.dsstat-seg:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.dsstat-seg.open { background: var(--dsw-alias-interactive-bg-hover); }
+.dsstat-seg.open .dsstat-val { color: var(--dsw-alias-brand-primary); }
+.dsstat-label { font-size: 11px; color: var(--dsw-alias-label-tertiary); }
+.dsstat-val { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--dsw-alias-label-primary); }
+.dsstat-chev { font-size: 9px; color: var(--dsw-alias-label-tertiary); }
+.dsstat-panel {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  z-index: 50;
+  width: min(320px, 100%);
+  padding: 10px 12px 12px;
+  overflow: hidden;
+  /* 传统模式背景 = 页面主背景（--dsw-alias-bg-base），深浅主题自动一致；
+     半透明模式由内联 color-mix 填充覆盖，不受此值影响。 */
+  background: var(--dsw-alias-bg-base);
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 10px;
+  box-shadow: var(--dsw-shadow-lv2);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 140ms ease;
+}
+.dsstat-panel.open { opacity: 1; pointer-events: auto; }
+.dsstat-panel-left { left: 0; }
+.dsstat-panel-right { right: 0; }
+/* Translucent mode: inline styles carry the fill AND the backdrop blur
+   (blur renders in normal browsers; VSCode's embedded browser cannot
+   sample scrolled content behind runtime-mounted elements). The stylesheet
+   twin adds the border/shadow tint and the glass-style inner glow. */
+/* Glass knobs: each panel defines --dsstat-blur / --dsstat-frost, bound to
+   the 面板玻璃 sliders (--dsh-dstat-*), so dragging them updates the panel
+   background live. NOTE: the panel element carries BOTH classes itself, so
+   the selector is the same-element .dsstat-glass.dsstat-panel — a
+   descendant combinator would never match. */
+.dsstat-glass.dsstat-panel {
+  --dsstat-blur: var(--dsh-dstat-blur, 14px);
+  --dsstat-frost: var(--dsh-dstat-frost, 1);
+}
+.dsstat-glass.dsstat-panel {
+  border-color: #132d5342;
+  box-shadow: inset 0 1px #ffffff80, 0 8px 28px #132d531a;
+}
+body[data-ds-dark-theme] .dsstat-glass.dsstat-panel {
+  border-color: #94b4dc52;
+  box-shadow: inset 0 1px #ffffff12, 0 6px 24px #02060e38;
+}
+.dsstat-glass.dsstat-panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    radial-gradient(420px 180px at 18% -10%, rgba(110, 165, 255, 0.12), transparent 70%),
+    radial-gradient(360px 160px at 92% 115%, rgba(110, 165, 255, 0.08), transparent 70%);
+}
+.dsstat-glass.dsstat-panel {
+  -webkit-backdrop-filter: blur(var(--dsstat-blur, 14px)) saturate(1.2);
+  backdrop-filter: blur(var(--dsstat-blur, 14px)) saturate(1.2);
+}
+.dsstat-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--dsw-alias-label-tertiary);
+  margin-bottom: 6px;
+}
+.dsstat-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 3px 0;
+  font-size: 12px;
+}
+.dsstat-k { color: var(--dsw-alias-label-secondary); white-space: nowrap; }
+.dsstat-v { font-variant-numeric: tabular-nums; color: var(--dsw-alias-label-primary); text-align: right; }
+.dsstat-s { display: block; font-size: 10px; color: var(--dsw-alias-label-tertiary); font-variant-numeric: tabular-nums; }
+.dsstat-ellip { max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dsstat-divider { height: 1px; background: var(--dsw-alias-border-l1); margin: 8px 0; }
+.dsstat-empty { font-size: 12px; color: var(--dsw-alias-label-tertiary); padding: 4px 0; }
+/* Cost section */
+.dsstat-refresh {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: color 120ms ease, background-color 120ms ease;
+}
+.dsstat-refresh:hover { color: var(--dsw-alias-brand-primary); background: var(--dsw-alias-interactive-bg-hover); }
+.dsstat-refresh.busy { color: var(--dsw-alias-brand-primary); }
+.dsstat-cost-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 3px 0;
+}
+.dsstat-cost-label { color: var(--dsw-alias-label-secondary); font-size: 12px; white-space: nowrap; }
+.dsstat-cost-value {
+  flex: 1;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--dsw-alias-label-primary);
+}
+.dsstat-cost-sub {
+  display: block;
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--dsw-alias-label-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+/* Settings → General rows: panel style + price table. */
+.dsstat-mode-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+  font-size: 12px;
+  color: var(--dsw-alias-label-primary);
+  font-family: var(--dsw-font-family);
+}
+.dsstat-mode-label { color: var(--dsw-alias-label-secondary); }
+.dsstat-mode-seg { display: inline-flex; gap: 4px; align-items: center; }
+.dsstat-pricing-text { font-size: 11px; color: var(--dsw-alias-label-tertiary); max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dsstat-mode-btn {
+  appearance: none;
+  border: 1px solid var(--dsw-alias-border-l1);
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-secondary);
+  border-radius: 8px;
+  padding: 3px 10px;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+.dsstat-mode-btn:hover { background: var(--dsw-alias-interactive-bg-hover-accent); }
+.dsstat-mode-btn.active {
+  background: var(--dsw-alias-interactive-bg-active);
+  color: var(--dsw-alias-label-primary);
+  border-color: var(--dsw-alias-brand-primary);
+}
+/* Settings → General: 面板玻璃滑杆。 */
+.dsstat-glass-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 0;
+  font-size: 12px;
+  color: var(--dsw-alias-label-primary);
+  font-family: var(--dsw-font-family);
+}
+.dsstat-glass-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.dsstat-knob {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.dsstat-knob-label {
+  flex: none;
+  width: 92px;
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+.dsstat-knob-range {
+  flex: 1;
+  min-width: 0;
+  height: 18px;
+  accent-color: var(--dsw-alias-state-business-primary);
+  cursor: pointer;
+}
+.dsstat-knob-num {
+  flex: none;
+  width: 56px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--dsw-alias-label-primary);
+}
+@media (prefers-reduced-motion: reduce) {
+  .dsstat-seg, .dsstat-panel, .dsstat-mode-btn { transition: none; }
+}
+
+/* Settings → Plugins card (same shape as other plugin cards). */
+.dsstat-card {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.dsstat-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 12px;
+  background: var(--dsw-alias-bg-layer-1);
+}
+.dsstat-card-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.dsstat-card-title {
+  color: var(--dsw-alias-label-primary);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 22px;
+}
+.dsstat-card-desc {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 18px;
+}
+.dsstat-card-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  height: 28px;
+  padding: 0 10px 0 6px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 14px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+}
+.dsstat-card-toggle:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.dsstat-card-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--dsw-alias-bg-layer-1);
+  background: var(--dsw-alias-state-success-primary, var(--dsw-alias-brand-primary));
+}
