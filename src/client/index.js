@@ -32,9 +32,10 @@ export function apply(ctx) {
     return () => { style.remove() }
   })
 
-  // Composer dock: replaces the official stats line.
+  // Composer dock: replaces the official stats line. Official one sits at
+  // priority 0; shadowing needs a strictly lower priority (lowest renders).
   slots.inject('conversation.composer.dock', () => slots.register(
-    { name: 'conversation.composer.dock', id: 'stats', order: 0, label: 'stats' },
+    { name: 'conversation.composer.dock', id: 'stats', priority: -1, label: 'stats' },
     (props) => React.createElement(StatsDock, props),
   ))
 

@@ -35,31 +35,21 @@ function moduleBody(file) {
   return read(file).replace(IMPORT_RE, '').replace(EXPORT_RE, '').trimEnd() + '\n'
 }
 
-// 入口模块：替换 styles.js 具名导入 → CSS 常量，再提取 apply 函数体。
+// 入口模块：替换 styles.js 具名导入 → CSS 常量，去掉其余具名 import 与
+// `export ` 关键字，保留 `const inject` 与 `function apply(ctx)` 完整声明，
+// 这样 bundle 顶层不会出现游离的 apply 函数体（否则 ctx 未定义）。
 function entryParts(file) {
   let text = read(file)
-  let cssConst = ''
   if (/^import \{ css \} from '\.\/styles\.js'\n/m.test(text)) {
     const css = read(join(CLIENT_SRC, 'styles.css'))
     if (css.includes('`') || css.includes('${')) {
       throw new Error('styles.css 含反引号或 ${，无法注入模板字符串')
     }
-    text = text.replace(/^import \{ css \} from '\.\/styles\.js'\n/m, '')
-    cssConst = 'const css = `' + css + '`\n'
+    text = text.replace(/^import \{ css \} from '\.\/styles\.js'\n/m, 'const css = `' + css + '`\n')
   }
-  const mark = 'export function apply(ctx) {'
-  const start = text.indexOf(mark)
-  if (start < 0) throw new Error('入口函数未找到: apply')
-  const open = start + mark.length - 1
-  let depth = 0
-  let i = open
-  for (; i < text.length; i++) {
-    if (text[i] === '{') depth++
-    else if (text[i] === '}') { depth--; if (depth === 0) break }
-  }
-  if (depth !== 0) throw new Error('括号不平衡: apply')
-  const fnBody = text.slice(open + 1, i).replace(/^\n/, '').replace(/\n$/, '')
-  return { cssConst, fnBody }
+  text = text.replace(IMPORT_RE, '').replace(EXPORT_RE, '').trimEnd() + '\n'
+  if (!text.includes('function apply(ctx)')) throw new Error('入口函数未找到: apply')
+  return text
 }
 
 // 按依赖序拼接：普通模块 + 入口（CSS 常量 + apply 函数体）。
@@ -68,12 +58,10 @@ const CLIENT_ORDER = ['prices.js', 'core.js', 'components.js', 'index.js']
 function buildClientBody() {
   let body = ''
   for (const file of CLIENT_ORDER) {
-    if (file === 'index.js') {
-      const { cssConst, fnBody } = entryParts(join(CLIENT_SRC, file))
-      body += (cssConst !== '' ? cssConst + '\n' : '') + fnBody + '\n'
-    } else {
-      body += moduleBody(join(CLIENT_SRC, file))
-    }
+    const text = file === 'index.js'
+      ? entryParts(join(CLIENT_SRC, file))
+      : moduleBody(join(CLIENT_SRC, file))
+    body += text + '\n'
   }
   return body.trimEnd() + '\n'
 }
@@ -118,7 +106,23 @@ export declare function apply(ctx: Context): void;
 `)
 
 // ---- 验证 ----
-new Function(clientBundle) // 语法校验（仅编译不执行）
+// 语法校验 + 执行冒烟：打桩 window/react 真正跑一次 factory，确保 bundle
+// 顶层无游离语句、且导出 apply 函数与 inject 数组（历史 bug 回归防护）。
+{
+  globalThis.window = {
+    __ModuleLoader__: {
+      load: ({ id, factory }) => {
+        const exports = factory((name) => {
+          if (name === 'react') return {} // 只验证可加载，不执行组件
+          throw new Error('unexpected require: ' + name)
+        })
+        if (typeof exports.apply !== 'function') throw new Error('bundle 未导出 apply 函数')
+        if (!Array.isArray(exports.inject)) throw new Error('bundle 未导出 inject 数组')
+      },
+    },
+  }
+  new Function(clientBundle)()
+}
 console.log('lib/client.js :', Buffer.byteLength(clientBundle), 'bytes')
 console.log('lib/index.js  :', Buffer.byteLength(nodeHalf), 'bytes')
 console.log('syntax OK')
