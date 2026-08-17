@@ -53,7 +53,7 @@ function entryParts(file) {
 }
 
 // 按依赖序拼接：普通模块 + 入口（CSS 常量 + apply 函数体）。
-const CLIENT_ORDER = ['prices.js', 'core.js', 'components.js', 'index.js']
+const CLIENT_ORDER = ['i18n.js', 'prices.js', 'core.js', 'components.js', 'index.js']
 
 function buildClientBody() {
   let body = ''
@@ -127,7 +127,18 @@ console.log('lib/client.js :', Buffer.byteLength(clientBundle), 'bytes')
 console.log('lib/index.js  :', Buffer.byteLength(nodeHalf), 'bytes')
 console.log('syntax OK')
 
-// ---- 冒烟：价格（峰谷取价）/格式化/折叠/成本管线（按步时间取价） ----
+// ---- 冒烟：i18n（zh/en 键集合一致）/价格（峰谷取价）/格式化/折叠/成本 ----
+const i18n = await import(join(CLIENT_SRC, 'i18n.js'))
+const zhKeys = Object.keys(i18n.dicts.zh).sort()
+const enKeys = Object.keys(i18n.dicts.en).sort()
+if (zhKeys.length === 0 || zhKeys.join('|') !== enKeys.join('|')) throw new Error('zh/en 字典键集合不一致')
+i18n.setLocaleFace(() => () => { /* no-op */ }, () => 0, (key, params) => {
+  const raw = i18n.dicts.zh[key] ?? key
+  if (!params) return raw
+  return raw.replace(/\{(\w+)\}/g, (m, name) => (name in params ? String(params[name]) : m))
+})
+if (i18n.t('seg.steps') !== '步数') throw new Error('i18n zh 翻译失败')
+if (i18n.t('sub.calls', { count: 3, value: '1.2s' }) !== '3 次 · 均 1.2s/次') throw new Error('i18n 插值失败')
 const { normalizeModelId, priceAt, PEAK_START_MS } = await import(join(CLIENT_SRC, 'prices.js'))
 const core = await import(join(CLIENT_SRC, 'core.js'))
 
@@ -186,4 +197,4 @@ const unk = await core.computeSessionCost([{ kind: 'assistant', requestConfig: {
 if (unk.ok !== false || !unk.error.startsWith('未知模型价格')) throw new Error('未知模型分支失败')
 const model = core.currentModel([{ kind: 'user' }, { kind: 'assistant', provenance: { model: 'deepseek-v4-flash' } }])
 if (model !== 'deepseek-v4-flash') throw new Error('currentModel 失败')
-console.log('smoke OK（归一化/峰谷取价/格式化/折叠/按步成本管线/未知模型）')
+console.log('smoke OK（i18n/归一化/峰谷取价/格式化/折叠/按步成本管线/未知模型）')

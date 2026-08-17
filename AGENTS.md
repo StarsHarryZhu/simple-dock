@@ -86,16 +86,17 @@ node build.js
 Zero-dependency bundler: merges `src/client/*.js` into `lib/client.js`
 (`window.__ModuleLoader__.load({ id, factory })` format, `react` external),
 copies the node half to `lib/index.js`, writes hand-typed `lib/types/*`.
-Build-time checks: syntax + smoke tests (model normalization, peak/off-peak
-price lookup with the 2026-08-17 effective date and UTC peak-hour boundaries,
-per-step cost pipeline priced at each step's completion time, unknown-model
-branch). Do not edit `lib/` by hand — it is generated.
+Build-time checks: syntax + smoke tests (zh/en dictionary key parity,
+model normalization, peak/off-peak price lookup with the 2026-08-17
+effective date and UTC peak-hour boundaries, per-step cost pipeline priced
+at each step's completion time, unknown-model branch). Do not edit `lib/`
+by hand — it is generated.
 
 ## Layout
 
 ```
 src/index.js        node half (empty apply — pure UI plugin)
-src/client/         prices.js · core.js · components.js · index.js · styles.css
+src/client/         i18n.js · prices.js · core.js · components.js · index.js · styles.css
 lib/                built outputs (committed for git installs)
 build.js            the bundler
 dynamic/            legacy session-scoped dynamic-plugin sources (not used)

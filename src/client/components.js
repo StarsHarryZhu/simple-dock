@@ -10,6 +10,13 @@ import {
   num, fmtExact, fmtDuration, fmtTps, fmtCost, formatClock,
   foldStats, stepReading, readUsage,
 } from './core.js'
+import { subscribeLocale, getLocaleRevision, t } from './i18n.js'
+
+// 跟随 DSH 系统语言的 hook：locale 快照 revision 变化（系统语言切换、
+// 字典注册）即触发组件重渲染；文案在渲染时经 t() 取当前语言。
+function useLocale() {
+  return React.useSyncExternalStore(subscribeLocale, getLocaleRevision)
+}
 
 function darkTheme() {
   return typeof document !== 'undefined' && document.body !== null
@@ -66,6 +73,7 @@ export function StatsDock(props) {
   const [rightOpen, setRightOpen] = React.useState(false)
   const rootRef = React.useRef(null)
   const panelMode = React.useSyncExternalStore(subscribePanelMode, getPanelMode)
+  useLocale()
 
   // 面板弹出期间把 composerSeat 临时提到「回到底部」按钮（z-8）之上。
   React.useEffect(() => {
@@ -176,24 +184,24 @@ export function StatsDock(props) {
       const msg = data.error || ''
       // 不在内置价格表的模型：不显示预估价格。
       if (typeof msg === 'string' && msg.indexOf('未知模型价格') === 0) {
-        return { value: '—', sub: '不在内置价格表，不估算费用' }
+        return { value: '—', sub: t('cost.notInTable') }
       }
-      return { value: '不可用', sub: msg }
+      return { value: t('cost.unavailable'), sub: msg }
     }
-    if (costState.loading) return { value: '加载中…', sub: '' }
-    if (costState.error) return { value: '不可用', sub: costState.error }
+    if (costState.loading) return { value: t('cost.loading'), sub: '' }
+    if (costState.error) return { value: t('cost.unavailable'), sub: costState.error }
     return { value: '—', sub: '' }
   })()
 
   const refreshCost = React.createElement('button', {
     className: 'dsstat-refresh' + (costState.loading ? ' busy' : ''),
     onClick: (e) => { e.stopPropagation(); setCostTick((t) => t + 1) },
-    title: '重新计算成本',
-    'aria-label': '刷新成本',
+    title: t('cost.recalc'),
+    'aria-label': t('cost.recalc'),
   }, costState.loading ? '…' : '↻')
 
   const costSection = React.createElement('div', { className: 'dsstat-cost-line', key: 'cost' },
-    React.createElement('span', { className: 'dsstat-cost-label' }, '预估成本'),
+    React.createElement('span', { className: 'dsstat-cost-label' }, t('cost.label')),
     React.createElement('span', { className: 'dsstat-cost-value' },
       costLine.value,
       costLine.sub
@@ -217,37 +225,40 @@ export function StatsDock(props) {
     className: 'dsstat-panel dsstat-panel-left' + (leftOpen ? ' open' : '') + glass,
     style: panelStyle,
   },
-    heading('h-perf', '性能'),
-    row('llm', 'LLM 耗时', fmtDuration(stats.llmMs), stats.steps > 0 && stats.llmMs > 0 ? `均 ${fmtDuration(stats.llmMs / stats.steps)}/步` : ''),
-    row('tool', '工具耗时', fmtDuration(stats.toolMs), stats.toolCalls > 0 ? `${stats.toolCalls} 次 · 均 ${fmtDuration(stats.toolMs / stats.toolCalls)}/次` : ''),
+    heading('h-perf', t('panel.perf')),
+    row('llm', t('row.llm'), fmtDuration(stats.llmMs),
+      stats.steps > 0 && stats.llmMs > 0 ? t('sub.perStep', { value: fmtDuration(stats.llmMs / stats.steps) }) : ''),
+    row('tool', t('row.tool'), fmtDuration(stats.toolMs),
+      stats.toolCalls > 0 ? t('sub.calls', { count: stats.toolCalls, value: fmtDuration(stats.toolMs / stats.toolCalls) }) : ''),
     divider('d-brief'),
-    heading('h-brief', '简报'),
-    row('title', '会话标题',
+    heading('h-brief', t('panel.brief')),
+    row('title', t('row.title'),
       title === undefined
         ? '—'
         : React.createElement('span', { className: 'dsstat-v dsstat-ellip', title }, title)),
-    row('status', '状态', running === undefined ? '—' : (running ? '进行中' : '空闲')),
-    row('update', '最近更新', clock === null ? '—' : clock, `第 ${stats.turns} 轮 · 共 ${stats.steps} 步`),
+    row('status', t('row.status'), running === undefined ? '—' : (running ? t('status.running') : t('status.idle'))),
+    row('update', t('row.updated'), clock === null ? '—' : clock,
+      t('sub.turnsSteps', { turns: stats.turns, steps: stats.steps })),
   )
 
   const tokenRows = usage === null || (billed === 0 && usage.out === 0)
-    ? [React.createElement('div', { className: 'dsstat-empty', key: 'empty' }, '暂无 token 数据')]
+    ? [React.createElement('div', { className: 'dsstat-empty', key: 'empty' }, t('empty.noTokens'))]
     : [
-      row('in-hit', '输入（命中）', fmtExact(usage.read)),
-      row('in-miss', '输入（未命中）', fmtExact(usage.uncached + usage.write),
-        usage.write > 0 ? `含缓存写入 ${fmtExact(usage.write)}` : ''),
-      row('out', '输出', fmtExact(usage.out)),
+      row('in-hit', t('row.inputHit'), fmtExact(usage.read)),
+      row('in-miss', t('row.inputMiss'), fmtExact(usage.uncached + usage.write),
+        usage.write > 0 ? t('sub.cacheWrite', { count: fmtExact(usage.write) }) : ''),
+      row('out', t('row.output'), fmtExact(usage.out)),
     ]
 
   const rightPanel = React.createElement('div', {
     className: 'dsstat-panel dsstat-panel-right' + (rightOpen ? ' open' : '') + glass,
     style: panelStyle,
   },
-    heading('h-tokens', 'Token 明细', '累计'),
+    heading('h-tokens', t('panel.tokens'), t('sub.total')),
     ...tokenRows,
     divider('d-metrics'),
-    row('ttft', '首 token 时间', avgTtft === null ? '—' : fmtDuration(avgTtft), '平均'),
-    row('tps', '生成速度', tps === null ? '—' : `${fmtTps(tps)} tok/s`, '平均'),
+    row('ttft', t('row.ttft'), avgTtft === null ? '—' : fmtDuration(avgTtft), t('sub.avg')),
+    row('tps', t('row.tps'), tps === null ? '—' : `${fmtTps(tps)} tok/s`, t('sub.avg')),
     divider('d-cost'),
     costSection,
   )
@@ -270,8 +281,8 @@ export function StatsDock(props) {
   if (!enabled) return null
 
   return React.createElement('div', { className: 'dsstat-root', ref: rootRef },
-    seg('seg-steps', leftOpen, () => setLeftOpen(!leftOpen), '步数', String(stats.steps)),
-    seg('seg-hit', rightOpen, () => setRightOpen(!rightOpen), '命中率', hitRate === null ? '—' : hitRate + '%'),
+    seg('seg-steps', leftOpen, () => setLeftOpen(!leftOpen), t('seg.steps'), String(stats.steps)),
+    seg('seg-hit', rightOpen, () => setRightOpen(!rightOpen), t('seg.hitRate'), hitRate === null ? '—' : hitRate + '%'),
     leftPanel,
     rightPanel,
   )
@@ -281,16 +292,17 @@ export function StatsDock(props) {
 export function ModeRow() {
   const enabled = React.useSyncExternalStore(subscribeEnabled, getEnabled)
   const mode = React.useSyncExternalStore(subscribePanelMode, getPanelMode)
+  useLocale()
   const btn = (label, value) => React.createElement('button', {
     className: 'dsstat-mode-btn' + (mode === value ? ' active' : ''),
     onClick: () => setPanelMode(value),
   }, label)
   if (!enabled) return null
   return React.createElement('div', { className: 'dsstat-mode-row' },
-    React.createElement('span', { className: 'dsstat-mode-label' }, '底栏面板样式'),
+    React.createElement('span', { className: 'dsstat-mode-label' }, t('mode.label')),
     React.createElement('div', { className: 'dsstat-mode-seg' },
-      btn('半透明', 'translucent'),
-      btn('传统', 'classic'),
+      btn(t('mode.translucent'), 'translucent'),
+      btn(t('mode.classic'), 'classic'),
     ),
   )
 }
@@ -300,11 +312,12 @@ export function ModeRow() {
 // 起分峰谷（UTC 01–04 与 06–10 为峰，谷为峰价一半），其余模型统一价。
 export function PricingRow() {
   const enabled = React.useSyncExternalStore(subscribeEnabled, getEnabled)
+  useLocale()
   if (!enabled) return null
   return React.createElement('div', { className: 'dsstat-mode-row' },
-    React.createElement('span', { className: 'dsstat-mode-label' }, '价格表'),
+    React.createElement('span', { className: 'dsstat-mode-label' }, t('pricing.label')),
     React.createElement('div', { className: 'dsstat-mode-seg dsstat-pricing-seg' },
-      React.createElement('span', { className: 'dsstat-pricing-text' }, '内置 · v4-pro/flash 峰谷计价'),
+      React.createElement('span', { className: 'dsstat-pricing-text' }, t('pricing.builtin')),
     ),
   )
 }
@@ -313,16 +326,17 @@ export function PricingRow() {
 export function CurrencyRow() {
   const enabled = React.useSyncExternalStore(subscribeEnabled, getEnabled)
   const currency = React.useSyncExternalStore(subscribeCurrency, getCurrency)
+  useLocale()
   const btn = (label, value) => React.createElement('button', {
     className: 'dsstat-mode-btn' + (currency === value ? ' active' : ''),
     onClick: () => setCurrency(value),
   }, label)
   if (!enabled) return null
   return React.createElement('div', { className: 'dsstat-mode-row' },
-    React.createElement('span', { className: 'dsstat-mode-label' }, '成本计价币种'),
+    React.createElement('span', { className: 'dsstat-mode-label' }, t('currency.label')),
     React.createElement('div', { className: 'dsstat-mode-seg' },
-      btn('美元 USD', 'usd'),
-      btn('人民币 CNY', 'cny'),
+      btn(t('currency.usd'), 'usd'),
+      btn(t('currency.cny'), 'cny'),
     ),
   )
 }
@@ -332,6 +346,7 @@ export function GlassRow() {
   const enabled = React.useSyncExternalStore(subscribeEnabled, getEnabled)
   const blur = React.useSyncExternalStore(subscribeGlass, getBlurPref)
   const frost = React.useSyncExternalStore(subscribeGlass, getFrostPref)
+  useLocale()
   const knob = (label, value, min, max, step, unit, onChange) => React.createElement('div', {
     className: 'dsstat-knob',
     key: label,
@@ -352,21 +367,22 @@ export function GlassRow() {
   if (!enabled) return null
   return React.createElement('div', { className: 'dsstat-glass-row' },
     React.createElement('div', { className: 'dsstat-glass-head' },
-      React.createElement('span', { className: 'dsstat-mode-label' }, '面板玻璃'),
+      React.createElement('span', { className: 'dsstat-mode-label' }, t('glass.label')),
     ),
-    knob('模糊度', blur, 0, 40, 0.5, ' px', setBlurPref),
-    knob('磨砂度', frost, 0, 100, 1, ' %', setFrostPref),
+    knob(t('glass.blur'), blur, 0, 40, 0.5, ' px', setBlurPref),
+    knob(t('glass.frost'), frost, 0, 100, 1, ' %', setFrostPref),
   )
 }
 
 // Settings → Plugins card: master on/off switch (same shape as other plugin cards).
 export function PluginCard() {
   const enabled = React.useSyncExternalStore(subscribeEnabled, getEnabled)
+  useLocale()
   return React.createElement('li', { className: 'dsstat-card' },
     React.createElement('div', { className: 'dsstat-card-head' },
       React.createElement('div', { className: 'dsstat-card-text' },
         React.createElement('div', { className: 'dsstat-card-title' }, 'Simple Dock'),
-        React.createElement('div', { className: 'dsstat-card-desc' }, '底栏统计坞：性能 / 简报 / Token 明细 / 预估成本'),
+        React.createElement('div', { className: 'dsstat-card-desc' }, t('card.desc')),
       ),
       React.createElement('button', {
         type: 'button',
@@ -375,7 +391,7 @@ export function PluginCard() {
         onClick: () => setEnabled(!enabled),
       },
         React.createElement('span', { className: 'dsstat-card-check' }, enabled ? '✓' : ''),
-        enabled ? '已启用' : '已停用',
+        enabled ? t('card.on') : t('card.off'),
       ),
     ),
   )
