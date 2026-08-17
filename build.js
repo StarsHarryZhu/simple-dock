@@ -127,19 +127,35 @@ console.log('lib/client.js :', Buffer.byteLength(clientBundle), 'bytes')
 console.log('lib/index.js  :', Buffer.byteLength(nodeHalf), 'bytes')
 console.log('syntax OK')
 
-// ---- 冒烟：价格/计费/格式化/成本管线（fetch 打桩为离线 → 内置表兜底） ----
-const { normalizeModelId, pickPrice, parseModelsDev, FALLBACK_PRICES } = await import(join(CLIENT_SRC, 'prices.js'))
+// ---- 冒烟：价格（峰谷取价）/格式化/折叠/成本管线（按步时间取价） ----
+const { normalizeModelId, priceAt, PEAK_START_MS } = await import(join(CLIENT_SRC, 'prices.js'))
 const core = await import(join(CLIENT_SRC, 'core.js'))
 
 if (normalizeModelId('openai/gpt-5@2025[1m]') !== 'gpt-5-2025') throw new Error('normalizeModelId 失败')
 if (normalizeModelId('deepseek/deepseek-v4-flash') !== 'deepseek-v4-flash') throw new Error('normalizeModelId 前缀剥离失败')
-const p = pickPrice(null, 'deepseek-v4-flash', 'usd')
-if (!p || Math.abs(p.input - 0.14) > 1e-9 || Math.abs(p.cacheRead - 0.0028) > 1e-9) throw new Error('内置 USD 表失败')
-const pc = pickPrice(null, 'deepseek-v4-flash', 'cny')
-if (!pc || Math.abs(pc.input - 1) > 1e-9) throw new Error('内置 CNY 表失败')
-if (pickPrice(null, 'gpt-5', 'usd') !== null) throw new Error('未知模型应返回 null')
-const parsed = parseModelsDev({ deepseek: { models: { 'deepseek-chat': { cost: { input: 0.1, output: 0.2, cache_read: 0.01 } } } } })
-if (parsed['deepseek-chat'].input !== 0.1) throw new Error('parseModelsDev 失败')
+// 峰谷生效前：统一价（flash USD 0.14 / 0.28 / 0.0028）
+const pre = priceAt('deepseek-v4-flash', 'usd', Date.UTC(2026, 7, 16, 2))
+if (!pre || Math.abs(pre.input - 0.14) > 1e-9 || Math.abs(pre.cacheRead - 0.0028) > 1e-9) throw new Error('生效前应走统一价')
+// 生效日零点起峰谷（UTC 00:00 为谷）
+const atStart = priceAt('deepseek-v4-flash', 'cny', PEAK_START_MS)
+if (!atStart || Math.abs(atStart.input - 1.5) > 1e-9) throw new Error('生效日零点应为谷价')
+// 峰（UTC 02:00）与谷（UTC 05:00）、半开边界 04:00 为谷
+const peak = priceAt('deepseek-v4-flash', 'cny', Date.UTC(2026, 8, 1, 2))
+if (!peak || Math.abs(peak.input - 3) > 1e-9 || Math.abs(peak.output - 9) > 1e-9 || Math.abs(peak.cacheRead - 0.1) > 1e-9) throw new Error('峰价失败')
+const off = priceAt('deepseek-v4-flash', 'cny', Date.UTC(2026, 8, 1, 5))
+if (!off || Math.abs(off.input - 1.5) > 1e-9) throw new Error('谷价失败')
+const edge = priceAt('deepseek-v4-flash', 'cny', Date.UTC(2026, 8, 1, 4))
+if (!edge || Math.abs(edge.input - 1.5) > 1e-9) throw new Error('04:00 半开边界应为谷价')
+const proPeak = priceAt('deepseek-v4-pro', 'usd', Date.UTC(2026, 8, 1, 6))
+if (!proPeak || Math.abs(proPeak.input - 1.32) > 1e-9) throw new Error('pro 峰价失败')
+// chat / reasoner 定向到 v4-flash 旧统一价：任意时刻（含峰谷时段）统一价
+const chat = priceAt('deepseek-chat', 'cny', Date.UTC(2026, 8, 1, 2))
+if (!chat || Math.abs(chat.input - 1) > 1e-9 || Math.abs(chat.cacheRead - 0.02) > 1e-9) throw new Error('chat 应定向 v4-flash 统一价')
+const chatUsd = priceAt('deepseek-chat', 'usd', Date.UTC(2026, 8, 1, 2))
+if (!chatUsd || Math.abs(chatUsd.input - 0.14) > 1e-9) throw new Error('chat USD 定向失败')
+const reasoner = priceAt('deepseek-reasoner', 'cny', Date.UTC(2026, 8, 1, 7))
+if (!reasoner || Math.abs(reasoner.input - 1) > 1e-9) throw new Error('reasoner 应定向 v4-flash 统一价')
+if (priceAt('gpt-5', 'usd', Date.now()) !== null) throw new Error('未知模型应返回 null')
 
 if (core.fmtCost(0.00089628, 'usd') !== '$0.0009') throw new Error('fmtCost 失败')
 const folded = core.foldStats([
@@ -149,14 +165,25 @@ const folded = core.foldStats([
 ])
 if (folded.steps !== 2 || folded.turns !== 1 || folded.toolCalls !== 1 || folded.llmMs !== 1650) throw new Error('foldStats 失败')
 
-// 成本管线：离线 fetch → 内置表兜底 → 按模型计价
-globalThis.fetch = async () => { throw new Error('offline (smoke)') }
-const usage = { uncached: 1300, read: 5100, write: 0, out: 2500 }
-const cost = await core.computeSessionCost([{ kind: 'assistant', requestConfig: { model: 'deepseek-v4-flash' } }], usage, 'usd')
-const expect = (5100 * 0.0028 + 1300 * 0.14 + 2500 * 0.28) / 1e6
-if (!cost.ok || Math.abs(cost.cost.total - expect) > 1e-9) throw new Error('computeSessionCost 失败: ' + JSON.stringify(cost))
+// 成本管线：两步分别落在峰/谷，按各自时刻取价累加（CNY）
+const PK = Date.UTC(2026, 8, 1, 2) // 峰
+const OP = Date.UTC(2026, 8, 1, 5) // 谷
+const usage = { uncached: 2000, read: 4000, write: 0, out: 1000 }
+const stepNodes = [
+  { kind: 'assistant', time: PK, timing: { completedTime: PK }, requestConfig: { model: 'deepseek-v4-flash' }, usage: { inputTokens: 1000, outputTokens: 500, cacheReadTokens: 2000 } },
+  { kind: 'assistant', time: OP, timing: { completedTime: OP }, requestConfig: { model: 'deepseek-v4-flash' }, usage: { inputTokens: 1000, outputTokens: 500, cacheReadTokens: 2000 } },
+]
+const cost = await core.computeSessionCost(stepNodes, usage, 'cny')
+const expect = (2000 * 0.1 + 1000 * 3 + 500 * 9) / 1e6 + (2000 * 0.05 + 1000 * 1.5 + 500 * 4.5) / 1e6
+if (!cost.ok || Math.abs(cost.cost.total - expect) > 1e-9) throw new Error('computeSessionCost 按步取价失败: ' + JSON.stringify(cost))
+// 生效前节点：统一价（USD flash）
+const preNodes = [{ kind: 'assistant', timing: { completedTime: Date.UTC(2026, 7, 16, 2) }, requestConfig: { model: 'deepseek-v4-flash' }, usage: { inputTokens: 1300, outputTokens: 2500, cacheReadTokens: 5100 } }]
+const preCost = await core.computeSessionCost(preNodes, { uncached: 1300, read: 5100, write: 0, out: 2500 }, 'usd')
+const preExpect = (5100 * 0.0028 + 1300 * 0.14 + 2500 * 0.28) / 1e6
+if (!preCost.ok || Math.abs(preCost.cost.total - preExpect) > 1e-9) throw new Error('生效前统一价失败: ' + JSON.stringify(preCost))
+// 未知模型：全部步无价 → ok:false
 const unk = await core.computeSessionCost([{ kind: 'assistant', requestConfig: { model: 'gpt-5' } }], usage, 'usd')
 if (unk.ok !== false || !unk.error.startsWith('未知模型价格')) throw new Error('未知模型分支失败')
-const model = core.currentModel([{ kind: 'user' }, { kind: 'assistant', provenance: { model: 'deepseek-reasoner' } }])
-if (model !== 'deepseek-reasoner') throw new Error('currentModel 失败')
-console.log('smoke OK（归一化/内置表/解析/格式化/折叠/成本管线/未知模型）')
+const model = core.currentModel([{ kind: 'user' }, { kind: 'assistant', provenance: { model: 'deepseek-v4-flash' } }])
+if (model !== 'deepseek-v4-flash') throw new Error('currentModel 失败')
+console.log('smoke OK（归一化/峰谷取价/格式化/折叠/按步成本管线/未知模型）')

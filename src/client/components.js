@@ -5,7 +5,7 @@ import {
   getPanelMode, setPanelMode, subscribePanelMode,
   getCurrency, setCurrency, subscribeCurrency,
   getBlurPref, getFrostPref, setBlurPref, setFrostPref, subscribeGlass,
-  readCostCache, writeCostCache, scheduleInterval, syncPrices,
+  readCostCache, writeCostCache, scheduleInterval,
   computeSessionCost,
   num, fmtExact, fmtDuration, fmtTps, fmtCost, formatClock,
   foldStats, stepReading, readUsage,
@@ -174,9 +174,9 @@ export function StatsDock(props) {
     }
     if (data && data.ok === false) {
       const msg = data.error || ''
-      // 非 DeepSeek 模型：不显示预估价格。
+      // 不在内置价格表的模型：不显示预估价格。
       if (typeof msg === 'string' && msg.indexOf('未知模型价格') === 0) {
-        return { value: '—', sub: '非 DeepSeek 模型，不估算费用' }
+        return { value: '—', sub: '不在内置价格表，不估算费用' }
       }
       return { value: '不可用', sub: msg }
     }
@@ -188,7 +188,7 @@ export function StatsDock(props) {
   const refreshCost = React.createElement('button', {
     className: 'dsstat-refresh' + (costState.loading ? ' busy' : ''),
     onClick: (e) => { e.stopPropagation(); setCostTick((t) => t + 1) },
-    title: '刷新价格表与成本',
+    title: '重新计算成本',
     'aria-label': '刷新成本',
   }, costState.loading ? '…' : '↻')
 
@@ -295,38 +295,16 @@ export function ModeRow() {
   )
 }
 
-// Settings row (Settings → General): real-time price table status + refresh.
+// Settings row (Settings → General): 内置价格表说明（无外部拉取）。
+// 成本按每次消耗的精确时间取峰/谷价：v4-pro / v4-flash 自 2026-08-17
+// 起分峰谷（UTC 01–04 与 06–10 为峰，谷为峰价一半），其余模型统一价。
 export function PricingRow() {
   const enabled = React.useSyncExternalStore(subscribeEnabled, getEnabled)
-  const [state, setState] = React.useState({ loading: false, text: '—' })
-  const run = (force) => {
-    setState((s) => ({ ...s, loading: true }))
-    Promise.resolve()
-      .then(() => syncPrices(force))
-      .then((res) => {
-        if (!res) { setState({ loading: false, text: '无响应' }); return }
-        if (res.source === 'models.dev') {
-          const when = res.syncedAt ? formatClock(res.syncedAt) : '—'
-          const extra = res.error ? ' · ' + res.error : ''
-          setState({ loading: false, text: `models.dev 实时同步 · ${when}${extra}` })
-        } else if (res.error) {
-          setState({ loading: false, text: `内置表（同步失败: ${res.error}）` })
-        } else {
-          setState({ loading: false, text: '内置表' })
-        }
-      })
-      .catch((e) => setState({ loading: false, text: '不可用: ' + String((e && e.message) || e) }))
-  }
-  React.useEffect(() => { run(false) }, [])
   if (!enabled) return null
   return React.createElement('div', { className: 'dsstat-mode-row' },
-    React.createElement('span', { className: 'dsstat-mode-label' }, '价格表（实时）'),
+    React.createElement('span', { className: 'dsstat-mode-label' }, '价格表'),
     React.createElement('div', { className: 'dsstat-mode-seg dsstat-pricing-seg' },
-      React.createElement('span', { className: 'dsstat-pricing-text' }, state.text),
-      React.createElement('button', {
-        className: 'dsstat-mode-btn' + (state.loading ? ' active' : ''),
-        onClick: () => run(true),
-      }, state.loading ? '…' : '刷新'),
+      React.createElement('span', { className: 'dsstat-pricing-text' }, '内置 · v4-pro/flash 峰谷计价'),
     ),
   )
 }

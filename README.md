@@ -42,7 +42,7 @@ ln -sfn "$PWD" "$DSH_HOME/profiles/node_modules/dsh-ui-simple-dock"
 
 - 底栏出现 `步数 N` ｜ `命中率 X%`
 - `设置 → 插件` 出现 **Simple Dock** 卡片（可开关）
-- `设置 → 通用设置` 出现四行：底栏面板样式 / 价格表（实时）/ 成本计价币种 / 面板玻璃
+- `设置 → 通用设置` 出现四行：底栏面板样式 / 价格表 / 成本计价币种 / 面板玻璃
 
 ### 卸载
 
@@ -79,7 +79,7 @@ New-Item -ItemType Junction -Path "$env:USERPROFILE\.dsh\profiles\node_modules\d
 
 | 说明 | 效果 |
 |---|---|
-| **底栏面板样式**：半透明（玻璃）/ 传统（实底）<br>**面板玻璃**：模糊度 0–40 px、磨砂度 0–100% 滑杆，拖动实时生效<br>**成本计价币种**：美元 USD / 人民币 CNY<br>**价格表（实时）**：models.dev 同步（1h 缓存，可手动刷新），失败回退内置表 | <img src="assets/thumbs/04-settings.png" alt="设置项" width="480" /> |
+| **底栏面板样式**：半透明（玻璃）/ 传统（实底）<br>**面板玻璃**：模糊度 0–40 px、磨砂度 0–100% 滑杆，拖动实时生效<br>**成本计价币种**：美元 USD / 人民币 CNY<br>**价格表**：内置（v4-pro / v4-flash 峰谷计价，不联网） | <img src="assets/thumbs/04-settings.png" alt="设置项" width="480" /> |
 | **传统模式**：实底背景与页面主背景一致，深浅主题自适应 | <img src="assets/thumbs/05-classic-left.png" alt="传统模式" width="480" /> |
 
 ## 其他
@@ -87,6 +87,15 @@ New-Item -ItemType Junction -Path "$env:USERPROFILE\.dsh\profiles\node_modules\d
 - 面板弹出时自动避让「回到底部」按钮；键盘可操作（Enter/空格）
 - 成本按会话缓存：打开秒显旧值，后台每小时自动刷新，也可点「↻」手动刷新
 - 非 DeepSeek 模型不显示预估费用
+
+## 成本计算（内置价格表，不联网）
+
+预估成本由浏览器本地计算，**不拉取任何外部价格表**：内置价格表按每次消耗的精确时间取价，再逐条累加。
+
+- **v4-pro / v4-flash**：2026-08-17（UTC）起分峰谷计价；峰时段为 UTC 01:00–04:00 与 06:00–10:00，谷时段价格为峰价的一半；此前消耗按统一价
+- **deepseek-chat / deepseek-reasoner**：自动按 v4-flash 的旧统一价计价（不参与峰谷）
+- 每次推理请求都会读取它的完成时刻（精确到毫秒）与该步所用模型，峰/谷价互不串算
+- 其他不在内置表中的模型不显示预估费用
 
 ## 与 DSH-Transparent-UI-Plugin（Aqua 透明玻璃主题）并用
 

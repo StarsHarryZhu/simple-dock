@@ -1,6 +1,6 @@
 // client/core.js — 偏好（localStorage + 订阅）、展示格式化、快照派生、
-// 预估成本缓存、价格表同步、当前模型读取。全部为纯浏览器逻辑。
-import { MODELS_DEV_URL, SYNC_TTL_MS, parseModelsDev, pickPrice } from './prices.js'
+// 预估成本缓存、按消耗时刻取价。全部为纯浏览器逻辑。
+import { priceAt } from './prices.js'
 
 const PANEL_MODE_KEY = 'dsh.dstat.panel.mode'
 const CURRENCY_KEY = 'dsh.dstat.currency'
@@ -112,46 +112,44 @@ export function applyGlassVars() {
   style.setProperty('--dsh-dstat-frost', String(Math.min(frostPref.get() / 50, 1.4)))
 }
 
-// ---- 价格表同步（浏览器 fetch；失败回退内置表，1h 内存缓存） ----
-let priceCache = null // { syncedAt, source, transport, prices, error? }
-let syncing = null
+// ---- 预估成本：按每次消耗的精确时间与模型取价（本地计算） ----
+// 数据来源：会话快照 assistant 节点。每步带 timing.completedTime
+// （Unix epoch ms，精确到毫秒）、该步 usage（input/output/cacheRead/
+// cacheWrite）与 requestConfig.model / provenance.model（该步所用模型）。
+// 投影 tokenUsage 只有聚合总量、无时间戳，因此按步扫描节点取价，
+// 与投影总量之差（节点缺 usage 的步）按会话最近时刻补算。
 
-export async function syncPrices(force) {
-  if (priceCache !== null && !force && Date.now() - priceCache.syncedAt < SYNC_TTL_MS) {
-    return priceCache
+// 每步消耗记录：{ at, model, usage }。at 为 null 表示该步无时间记录
+//（窗口截断/旧会话），计价时按最近已知时刻近似；usage 为 null 表示无用量。
+export function stepCosts(nodes) {
+  const rows = []
+  let fallbackModel = null
+  for (const node of nodes) {
+    if (!node || node.kind !== 'assistant') continue
+    const timing = node.timing
+    const at = timing !== undefined && typeof timing.completedTime === 'number'
+      ? timing.completedTime
+      : (typeof node.time === 'number' ? node.time : null)
+    const cfg = node.requestConfig
+    const prov = node.provenance
+    let model = (cfg && typeof cfg.model === 'string' && cfg.model !== '') ? cfg.model
+      : (prov && typeof prov.model === 'string' && prov.model !== '') ? prov.model
+      : null
+    if (model !== null) fallbackModel = model
+    const u = node.usage
+    const usage = u !== undefined && u !== null && typeof u === 'object'
+      ? {
+          uncached: num(u.inputTokens) ?? 0,
+          out: num(u.outputTokens) ?? 0,
+          read: num(u.cacheReadTokens) ?? 0,
+          write: num(u.cacheWriteTokens) ?? 0,
+        }
+      : null
+    rows.push({ at, model, usage })
   }
-  if (syncing !== null) return syncing
-  syncing = (async () => {
-    try {
-      const ctrl = new AbortController()
-      const timer = setTimeout(() => ctrl.abort(), 20000)
-      let res
-      try {
-        res = await fetch(MODELS_DEV_URL, { signal: ctrl.signal })
-      } finally {
-        clearTimeout(timer)
-      }
-      if (!res.ok) throw new Error('models.dev HTTP ' + res.status)
-      priceCache = {
-        syncedAt: Date.now(),
-        source: 'models.dev',
-        transport: 'fetch',
-        prices: parseModelsDev(await res.json()),
-      }
-    } catch (e) {
-      priceCache = {
-        syncedAt: Date.now(),
-        source: 'fallback',
-        prices: null,
-        error: String((e && e.message) || e),
-      }
-    }
-    return priceCache
-  })().finally(() => { syncing = null })
-  return syncing
+  return rows
 }
 
-// ---- 预估成本：投影聚合 × 价格表（本地计算） ----
 // 读取会话快照中最后一个 assistant 节点的模型身份（requestConfig /
 // provenance 均为官方记录字段）；没有则按默认模型计价。
 export function currentModel(nodes) {
@@ -166,34 +164,81 @@ export function currentModel(nodes) {
   return null
 }
 
-// 计算某会话的预估成本：{ ok, currency, model, cost }。
-// nodes = 会话快照节点（读模型）；usage = readUsage() 投影聚合。
+// 计算某会话的预估成本：{ ok, currency, model, cost, skipped }。
+// nodes = 会话快照节点（时间 + 每步模型 + 每步用量）；usage = readUsage()
+// 投影聚合（兜底差额）。每步按其消耗时刻取峰/谷价累加。
 export async function computeSessionCost(nodes, usage, currencyCode) {
-  const pricing = await syncPrices(false)
-  const model = currentModel(nodes)
-  const price = pickPrice(pricing.prices, model || 'deepseek-v4-flash', currencyCode)
-  if (price === null) {
-    return { ok: false, error: '未知模型价格: ' + (model || '(空)') }
+  const fallbackModel = currentModel(nodes) || 'deepseek-v4-flash'
+  const rows = stepCosts(nodes)
+  const priced = { uncached: 0, out: 0, read: 0, write: 0 }
+  let total = { hit: 0, miss: 0, out: 0, total: 0 }
+  let lastAt = null
+  let skipped = 0
+  let skippedModel = null
+  for (const row of rows) {
+    if (row.usage === null) continue
+    const at = row.at !== null ? row.at : (lastAt !== null ? lastAt : Date.now())
+    if (row.at !== null) lastAt = row.at
+    const model = row.model || fallbackModel
+    const price = priceAt(model, currencyCode, at)
+    if (price === null) {
+      skipped += 1
+      if (skippedModel === null) skippedModel = model
+      continue
+    }
+    priced.uncached += row.usage.uncached
+    priced.out += row.usage.out
+    priced.read += row.usage.read
+    priced.write += row.usage.write
+    const hit = (row.usage.read * (price.cacheRead || 0)) / 1e6
+    const miss = ((row.usage.uncached + row.usage.write) * (price.input || 0)) / 1e6
+    const out = (row.usage.out * (price.output || 0)) / 1e6
+    total.hit += hit
+    total.miss += miss
+    total.out += out
+    total.total += hit + miss + out
   }
-  const hit = usage.read
-  const miss = usage.uncached + usage.write
-  const out = usage.out
+  // 差额兜底：节点缺 usage 的步（或节点外用量），按最近一次消耗时刻取价。
+  const u = usage || { uncached: 0, out: 0, read: 0, write: 0 }
+  const leftover = {
+    uncached: Math.max(0, u.uncached - priced.uncached),
+    out: Math.max(0, u.out - priced.out),
+    read: Math.max(0, u.read - priced.read),
+    write: Math.max(0, u.write - priced.write),
+  }
+  if (leftover.uncached > 0 || leftover.out > 0 || leftover.read > 0 || leftover.write > 0) {
+    const price = priceAt(fallbackModel, currencyCode, lastAt !== null ? lastAt : Date.now())
+    if (price !== null) {
+      const hit = (leftover.read * (price.cacheRead || 0)) / 1e6
+      const miss = ((leftover.uncached + leftover.write) * (price.input || 0)) / 1e6
+      const out = (leftover.out * (price.output || 0)) / 1e6
+      total.hit += hit
+      total.miss += miss
+      total.out += out
+      total.total += hit + miss + out
+    } else {
+      skipped += 1
+      if (skippedModel === null) skippedModel = fallbackModel
+    }
+  }
+  if (priced.uncached + priced.out + priced.read + priced.write === 0 && total.total === 0) {
+    return { ok: false, error: '未知模型价格: ' + (skippedModel || fallbackModel) }
+  }
   return {
     ok: true,
     currency: currencyCode,
-    model: model || 'deepseek-v4-flash',
-    cost: {
-      hit: (hit * (price.cacheRead || 0)) / 1e6,
-      miss: (miss * (price.input || 0)) / 1e6,
-      out: (out * (price.output || 0)) / 1e6,
-      total: (hit * (price.cacheRead || 0) + miss * (price.input || 0) + out * (price.output || 0)) / 1e6,
-    },
+    model: fallbackModel,
+    cost: total,
+    skipped,
+    skippedModel,
   }
 }
 
 // ---- 预估成本缓存：按会话持久化（localStorage）。打开面板先显示缓存、
 // 后台更新后替换；插件运行期间后台每小时刷新一次。 ----
+// 缓存带 PRICE_VERSION：内置价格表升级后旧条目自动失效（版本不符视为无缓存）。
 const COST_CACHE_PREFIX = 'dsh.dstat.cost.'
+export const PRICE_VERSION = 3
 
 export function readCostCache(sessionId) {
   try {
@@ -201,6 +246,7 @@ export function readCostCache(sessionId) {
     if (raw === null) return null
     const parsed = JSON.parse(raw)
     if (!parsed || typeof parsed !== 'object' || !parsed.data) return null
+    if (parsed.priceVersion !== PRICE_VERSION) return null
     return parsed
   } catch (e) {
     return null
@@ -209,7 +255,8 @@ export function readCostCache(sessionId) {
 
 export function writeCostCache(sessionId, data) {
   try {
-    window.localStorage.setItem(COST_CACHE_PREFIX + sessionId, JSON.stringify({ data, fetchedAt: Date.now() }))
+    window.localStorage.setItem(COST_CACHE_PREFIX + sessionId,
+      JSON.stringify({ data, fetchedAt: Date.now(), priceVersion: PRICE_VERSION }))
   } catch (e) {
     // Storage unavailable (private mode): the in-memory fallback still works.
   }

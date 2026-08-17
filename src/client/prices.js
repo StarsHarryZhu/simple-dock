@@ -1,30 +1,42 @@
-// client/prices.js — 价格模型（纯函数）+ 浏览器端同步。
+// client/prices.js — 内置价格模型（唯一来源，不拉取外部价格表）。
 // 计费原理：金额 = token 用量 × 模型价格表，本地计算。
 //   - 思维链按输出价计费（无独立 reasoning 价目）；
 //   - 未命中输入价已含缓存写入，不重复计费（无 cacheWrite 价目）。
 
-export const MODELS_DEV_URL = 'https://models.dev/api.json'
-export const SYNC_TTL_MS = 60 * 60 * 1000 // 1h 缓存；手动刷新可强制
+// 峰谷时段定义（UTC 小时，半开区间 [start, end)）：
+//   峰：01:00–04:00、06:00–10:00；其余为谷。
+export const PEAK_HOURS_UTC = [[1, 4], [6, 10]]
+// 峰谷计价生效时刻：2026-08-17T00:00:00Z（此前一律按旧统一价）。
+export const PEAK_START_MS = Date.UTC(2026, 7, 17)
 
-// 内置回退价格表（USD / CNY，1M tokens）。USD 数值与 models.dev 实时表
-// 核对一致；CNY 取自 DeepSeek 官方 CNY 定价（api-docs.deepseek.com）。
+// 内置价格表（每 1M tokens）。字段顺序与 DeepSeek 官方价目一致：
+// cacheRead（缓存命中输入）/ input（未命中输入）/ output（输出）。
+//   usd / cny     —— 统一价（2026-08-17 前）
+//   peakUsd/peakCny  —— 峰时段价；offPeak* —— 谷时段价（峰 × 0.5）
 export const FALLBACK_PRICES = {
   'deepseek-v4-flash': {
     usd: { input: 0.14, output: 0.28, cacheRead: 0.0028 },
     cny: { input: 1, output: 2, cacheRead: 0.02 },
+    peakUsd: { input: 0.44, output: 1.32, cacheRead: 0.014 },
+    peakCny: { input: 3, output: 9, cacheRead: 0.1 },
+    offPeakUsd: { input: 0.22, output: 0.66, cacheRead: 0.007 },
+    offPeakCny: { input: 1.5, output: 4.5, cacheRead: 0.05 },
   },
   'deepseek-v4-pro': {
     usd: { input: 0.435, output: 0.87, cacheRead: 0.003625 },
     cny: { input: 3, output: 6, cacheRead: 0.025 },
+    peakUsd: { input: 1.32, output: 3.96, cacheRead: 0.044 },
+    peakCny: { input: 9, output: 27, cacheRead: 0.3 },
+    offPeakUsd: { input: 0.66, output: 1.98, cacheRead: 0.022 },
+    offPeakCny: { input: 4.5, output: 13.5, cacheRead: 0.15 },
   },
-  'deepseek-chat': {
-    usd: { input: 0.14, output: 0.28, cacheRead: 0.0028 },
-    cny: { input: 1, output: 2, cacheRead: 0.02 },
-  },
-  'deepseek-reasoner': {
-    usd: { input: 0.14, output: 0.28, cacheRead: 0.0028 },
-    cny: { input: 1, output: 2, cacheRead: 0.02 },
-  },
+}
+
+// 旧模型定向：deepseek-chat / deepseek-reasoner 按 v4-flash 的统一价
+// （旧价格表）计价，不参与峰谷。
+const ALIAS_UNIFIED = {
+  'deepseek-chat': 'deepseek-v4-flash',
+  'deepseek-reasoner': 'deepseek-v4-flash',
 }
 
 // 模型 id 归一化：去 provider 前缀、冒号、@ 与 [1m] 后缀，统一小写。
@@ -37,43 +49,36 @@ export function normalizeModelId(modelId) {
   return id
 }
 
-// 解析 models.dev api.json → { 归一化模型id: {input, output, cacheRead} }。
-// 载荷按 JSON 解析；失败抛错（回退内置表）。
-export function parseModelsDev(json) {
-  const deepseek = json && json.deepseek && json.deepseek.models
-  if (!deepseek) throw new Error('models.dev: deepseek provider 缺失')
-  const out = {}
-  for (const [rawId, model] of Object.entries(deepseek)) {
-    const cost = model && model.cost
-    if (!cost) continue
-    if (typeof cost.input !== 'number' && typeof cost.output !== 'number') continue
-    const id = normalizeModelId(rawId)
-    if (id === '') continue
-    out[id] = {
-      input: typeof cost.input === 'number' ? cost.input : 0,
-      output: typeof cost.output === 'number' ? cost.output : 0,
-      cacheRead: typeof cost.cache_read === 'number' ? cost.cache_read : 0,
-    }
-  }
-  if (Object.keys(out).length === 0) throw new Error('models.dev: 无可用价格条目')
-  return out
+function cap(s) {
+  return s === 'usd' ? 'Usd' : 'Cny'
 }
 
-// 取某模型价格：实时表优先，内置表兜底；都不认识返回 null。
-// usd：models.dev 实时表优先，失败回退内置 USD 表；cny：仅内置官方 CNY 表。
-export function pickPrice(syncedPrices, modelId, currency) {
+// 取某模型在某时刻的适用价格（每 1M tokens）。
+//   - 模型不存在 → null；
+//   - 无峰谷的模型 → 统一价；
+//   - 峰谷生效日（2026-08-17T00:00:00Z）之前 → 统一价；
+//   - 之后按消耗时刻的 UTC 小时落峰/谷时段取对应价。
+export function priceAt(modelId, currency, atMs) {
   const id = normalizeModelId(modelId)
   if (id === '') return null
-  const synced = syncedPrices && syncedPrices[id]
-  const fallback = FALLBACK_PRICES[id]
-  const rates = currency === 'cny'
-    ? (fallback ? (fallback.cny || fallback.usd) : null)
-    : (synced || (fallback ? (fallback.usd || fallback.cny) : null))
-  if (!rates) return null
+  const alias = ALIAS_UNIFIED[id]
+  if (alias !== undefined) {
+    const base = FALLBACK_PRICES[alias]
+    return base ? (base[currency] || base.usd || base.cny) : null
+  }
+  const m = FALLBACK_PRICES[id]
+  if (!m) return null
+  const unified = m[currency] || m.usd || m.cny
+  if (m.peakUsd === undefined || m.peakCny === undefined) return unified
+  if (!(atMs >= PEAK_START_MS)) return unified
+  const hour = new Date(atMs).getUTCHours()
+  const table = PEAK_HOURS_UTC.some(([s, e]) => hour >= s && hour < e)
+    ? (m['peak' + cap(currency)] || m.peakUsd)
+    : (m['offPeak' + cap(currency)] || m.offPeakUsd)
   return {
-    input: rates.input ?? 0,
-    output: rates.output ?? 0,
-    cacheRead: rates.cacheRead ?? 0,
+    input: table.input ?? 0,
+    output: table.output ?? 0,
+    cacheRead: table.cacheRead ?? 0,
   }
 }
 
