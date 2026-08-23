@@ -26,7 +26,18 @@ DSH_HOME="${DSH_HOME:-$HOME/.dsh}"
 ln -sfn "$PWD" "$DSH_HOME/profiles/node_modules/dsh-ui-simple-dock"
 ```
 
-### 4. 注册 bundle
+### 4. 链接 node half 依赖
+
+node 半区注册 `simple-dock` 设置命名空间，需要 host 的 `@deepseek-ai/dsh-settings` 与 `@deepseek-ai/schemastery`。插件通过 symlink 链接到 profile 的共享 store（跳过这些的包仍能链接插件，但卡片不会渲染）：
+
+```sh
+DSH_HOME="${DSH_HOME:-$HOME/.dsh}"
+mkdir -p node_modules/@deepseek-ai
+ln -sfn "$DSH_HOME/profiles/node_modules/@deepseek-ai/dsh-settings" node_modules/@deepseek-ai/dsh-settings
+ln -sfn "$DSH_HOME/profiles/node_modules/@deepseek-ai/schemastery"  node_modules/@deepseek-ai/schemastery
+```
+
+### 5. 注册 bundle
 
 编辑 `$DSH_HOME/profiles/web/cordis.patch.yml`，在文件末尾追加：
 
@@ -36,7 +47,7 @@ ln -sfn "$PWD" "$DSH_HOME/profiles/node_modules/dsh-ui-simple-dock"
       name: 'dsh-ui-simple-dock'
 ```
 
-### 5. 重启 DSH
+### 6. 重启 DSH
 
 重启后自动生效（bundle **无需审批**）。验证：
 
@@ -58,11 +69,14 @@ rm "$DSH_HOME/profiles/node_modules/dsh-ui-simple-dock"
 # 1. 获取源码后执行 node build.js
 # 2. 链接（junction）
 New-Item -ItemType Junction -Path "$env:USERPROFILE\.dsh\profiles\node_modules\dsh-ui-simple-dock" -Target "C:\path\to\simple-dock"
-# 3. 编辑 $env:USERPROFILE\.dsh\profiles\web\cordis.patch.yml，追加：
+# 3. 链接 node half 依赖（junction 同样可以指向目录）
+New-Item -ItemType Junction -Path "C:\path\to\simple-dock\node_modules\@deepseek-ai\dsh-settings" -Target "$env:USERPROFILE\.dsh\profiles\node_modules\@deepseek-ai\dsh-settings"
+New-Item -ItemType Junction -Path "C:\path\to\simple-dock\node_modules\@deepseek-ai\schemastery"  -Target "$env:USERPROFILE\.dsh\profiles\node_modules\@deepseek-ai\schemastery"
+# 4. 编辑 $env:USERPROFILE\.dsh\profiles\web\cordis.patch.yml，追加：
 #    - insert:
 #        - id: simple-dock
 #          name: 'dsh-ui-simple-dock'
-# 4. 重启 DSH
+# 5. 重启 DSH
 ```
 
 ## 功能
@@ -87,12 +101,14 @@ New-Item -ItemType Junction -Path "$env:USERPROFILE\.dsh\profiles\node_modules\d
 - 面板弹出时自动避让「回到底部」按钮；键盘可操作（Enter/空格）
 - 成本按会话缓存：打开秒显旧值，后台每小时自动刷新，也可点「↻」手动刷新
 - 非 DeepSeek 模型不显示预估费用
+- `设置 → 插件` 卡片上的开关：关闭后**恢复 DSH 官方底栏**（本插件的底栏注册随之注销），重新开启即恢复统计坞
 
 ## 成本计算（内置价格表，不联网）
 
 预估成本由浏览器本地计算，**不拉取任何外部价格表**：内置价格表按每次消耗的精确时间取价，再逐条累加。
 
 - **v4-pro / v4-flash**：2026-08-17（UTC）起分峰谷计价；峰时段为 UTC 01:00–04:00 与 06:00–10:00，谷时段价格为峰价的一半；此前消耗按统一价
+- **周末全天谷价**：2026-08-23 00:00（北京时间）起，北京时间周六、周日全天按谷价（谷时段价）；工作日维持峰谷时段
 - **deepseek-chat / deepseek-reasoner**：自动按 v4-flash 的旧统一价计价（不参与峰谷）
 - 每次推理请求都会读取它的完成时刻（精确到毫秒）与该步所用模型，峰/谷价互不串算
 - 其他不在内置表中的模型不显示预估费用
@@ -119,7 +135,7 @@ node build.js    # 生成 lib/index.js（node 半区）+ lib/client.js（浏览�
 ```
 simple-dock/                # bundle 包（dsh-ui-simple-dock）
 ├── src/
-│   ├── index.js            #   node 半区（空 apply，纯 UI 插件）
+│   ├── index.js            #   node 半区（注册 simple-dock 设置命名空间，其余纯客户端）
 │   └── client/             #   浏览器半区：prices / core / components / index + styles.css
 ├── lib/                    # 构建产物（client.js = __ModuleLoader__.load 格式）
 ├── build.js                # 零依赖打包器

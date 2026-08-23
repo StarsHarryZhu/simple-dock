@@ -7,14 +7,19 @@ token / estimated-cost panels.
 
 ## What this package is
 
-- **Bundle type**: client-only UI plugin (node half is an empty `apply`).
+- **Bundle type**: UI plugin with a thin node half. The node half only
+  registers the `simple-dock` settings namespace (the browser card is keyed
+  by it); every feature runs in the browser.
 - **Registration**: `dsh.client` declaration in `package.json` + one insert
   row in the web profile's `cordis.patch.yml`. No approval flow: bundles load
   automatically once the composition includes them.
-- **Runtime dependencies**: only `react` (loader platform module) plus the
-  `slots` service. Everything else (token usage projection, model from session
-  nodes, built-in price table with peak/off-peak tiers) is client-side and
-  never fetches the network.
+- **Runtime dependencies**: the browser half needs only `react` (loader
+  platform module) plus the `slots` service. The node half imports
+  `@deepseek-ai/dsh-settings` and `@deepseek-ai/schemastery` for the namespace
+  registration; those must resolve from the package's local `node_modules`
+  (symlinked to the profile's shared store, see Install). Everything else
+  (token usage projection, model from session nodes, built-in price table with
+  peak/off-peak tiers) is client-side and never fetches the network.
 
 ## Install (manual — macOS / Linux)
 
@@ -30,19 +35,27 @@ node build.js
 DSH_HOME="${DSH_HOME:-$HOME/.dsh}"
 ln -sfn "$PWD" "$DSH_HOME/profiles/node_modules/dsh-ui-simple-dock"
 
-# 3. register the bundle: append to $DSH_HOME/profiles/web/cordis.patch.yml
+# 3. link the node-half deps into the package's local node_modules
+#    (the node half imports @deepseek-ai/dsh-settings + @deepseek-ai/schemastery;
+#    Node resolves symlinked packages by realpath, so these must exist locally)
+mkdir -p node_modules/@deepseek-ai
+ln -sfn "$DSH_HOME/profiles/node_modules/@deepseek-ai/dsh-settings" node_modules/@deepseek-ai/dsh-settings
+ln -sfn "$DSH_HOME/profiles/node_modules/@deepseek-ai/schemastery"  node_modules/@deepseek-ai/schemastery
+
+# 4. register the bundle: append to $DSH_HOME/profiles/web/cordis.patch.yml
 #    - insert:
 #        - id: simple-dock
 #          name: 'dsh-ui-simple-dock'
 
-# 4. restart DSH
+# 5. restart DSH
 ```
 
 > `$DSH_HOME/profiles/node_modules` is a shared hoisted store: the symlink
 > target must be the package root (the directory containing `package.json`),
 > and the link name must be the exact package name (scoped path included).
 > Windows users: use a junction instead of a symlink
-> (`New-Item -ItemType Junction`), same patch row, same restart requirement.
+> (`New-Item -ItemType Junction`), same patch row, same restart requirement —
+> and junction the node-half deps into `node_modules/@deepseek-ai/` the same way.
 
 ## Activate
 
@@ -88,14 +101,15 @@ Zero-dependency bundler: merges `src/client/*.js` into `lib/client.js`
 copies the node half to `lib/index.js`, writes hand-typed `lib/types/*`.
 Build-time checks: syntax + smoke tests (zh/en dictionary key parity,
 model normalization, peak/off-peak price lookup with the 2026-08-17
-effective date and UTC peak-hour boundaries, per-step cost pipeline priced
-at each step's completion time, unknown-model branch). Do not edit `lib/`
-by hand — it is generated.
+effective date and UTC peak-hour boundaries, the 2026-08-23 Beijing-time
+weekend all-day off-peak rule, per-step cost pipeline priced at each step's
+completion time, unknown-model branch). Do not edit `lib/` by hand — it is
+generated.
 
 ## Layout
 
 ```
-src/index.js        node half (empty apply — pure UI plugin)
+src/index.js        node half (registers the simple-dock settings namespace)
 src/client/         i18n.js · prices.js · core.js · components.js · index.js · styles.css
 lib/                built outputs (committed for git installs)
 build.js            the bundler
@@ -105,10 +119,15 @@ assets/ demo/       screenshots and recordings
 
 ## Notes
 
-- Do not add host-side logic: the web profile loads only the client half; the
-  node half must stay dependency-free.
+- Keep the node half minimal: it registers the `simple-dock` settings
+  namespace (an empty schema — the card stores its state in localStorage) and
+  nothing else. No host behavior, no network; do not grow it.
 - The settings plugin card and general rows are plain slot registrations
-  (`settings.plugin.item` id `simple-dock`, `settings.general.item` ids
-  `dstat-*`, composer dock id `stats` order 0).
+  (`settings.plugin.item` key `simple-dock` — keyed slots dispatch by the
+  served namespace, not an id — `settings.general.item` ids `dstat-*`,
+  composer dock id `stats` priority -1).
+- The composer dock registration is dynamic: the plugin card's on/off switch
+  subscribes the enabled pref and unregisters the dock (`slots.inject`
+  disposer) so the official stats line renders again when disabled.
 - CSS is injected as a `<style data-plugin="dsh-ui-simple-dock">`
   tag owned by the fiber; keep that attribute so the loader can clean it up.

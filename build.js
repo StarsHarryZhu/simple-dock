@@ -95,8 +95,10 @@ const nodeHalf = read(join(SRC, 'index.js'))
 writeFileSync(join(LIB, 'index.js'), nodeHalf)
 
 // 手写类型声明（JS 包的最小契约）。
-writeFileSync(join(LIB, 'types', 'index.d.ts'), `/** Simple Dock node half. No host-side behavior. */
-export declare function apply(): void;
+writeFileSync(join(LIB, 'types', 'index.d.ts'), `/** Simple Dock node half: registers the simple-dock settings namespace. */
+import type { Context } from '@deepseek-ai/cordis';
+/** Register the namespace once the optional settings service is composed. */
+export declare function apply(ctx: Context): void;
 `)
 writeFileSync(join(LIB, 'types', 'client', 'index.d.ts'), `/** Simple Dock client plugin body. */
 import type { Context } from '@deepseek-ai/cordis';
@@ -139,7 +141,7 @@ i18n.setLocaleFace(() => () => { /* no-op */ }, () => 0, (key, params) => {
 })
 if (i18n.t('seg.steps') !== '步数') throw new Error('i18n zh 翻译失败')
 if (i18n.t('sub.calls', { count: 3, value: '1.2s' }) !== '3 次 · 均 1.2s/次') throw new Error('i18n 插值失败')
-const { normalizeModelId, priceAt, PEAK_START_MS } = await import(join(CLIENT_SRC, 'prices.js'))
+const { normalizeModelId, priceAt, PEAK_START_MS, WEEKEND_START_MS } = await import(join(CLIENT_SRC, 'prices.js'))
 const core = await import(join(CLIENT_SRC, 'core.js'))
 
 if (normalizeModelId('openai/gpt-5@2025[1m]') !== 'gpt-5-2025') throw new Error('normalizeModelId 失败')
@@ -159,6 +161,20 @@ const edge = priceAt('deepseek-v4-flash', 'cny', Date.UTC(2026, 8, 1, 4))
 if (!edge || Math.abs(edge.input - 1.5) > 1e-9) throw new Error('04:00 半开边界应为谷价')
 const proPeak = priceAt('deepseek-v4-pro', 'usd', Date.UTC(2026, 8, 1, 6))
 if (!proPeak || Math.abs(proPeak.input - 1.32) > 1e-9) throw new Error('pro 峰价失败')
+// 周末全天谷价（2026-08-23 00:00 北京时间 = UTC 8/22 16:00 起）：
+// 生效前北京周六（UTC 8/22 02:00 = 北京 10:00 周六）仍按旧规则 → 峰价
+const preWeekend = priceAt('deepseek-v4-flash', 'cny', Date.UTC(2026, 7, 22, 2))
+if (!preWeekend || Math.abs(preWeekend.input - 3) > 1e-9) throw new Error('周末规则生效前周六应仍按峰谷')
+// 生效瞬间（UTC 8/22 16:00 = 北京 8/23 00:00 周日）→ 谷价
+const weekendStart = priceAt('deepseek-v4-flash', 'cny', WEEKEND_START_MS)
+if (!weekendStart || Math.abs(weekendStart.input - 1.5) > 1e-9) throw new Error('周末规则生效瞬间应为谷价')
+// 生效后北京周六（UTC 9/5 02:00 = 北京 10:00 周六）峰小时 → 全天谷价
+const satPeakHour = priceAt('deepseek-v4-flash', 'cny', Date.UTC(2026, 8, 5, 2))
+if (!satPeakHour || Math.abs(satPeakHour.input - 1.5) > 1e-9) throw new Error('生效后周六峰小时应为谷价')
+// 生效后北京周日峰小时 → 谷价
+const sunPeakHour = priceAt('deepseek-v4-flash', 'cny', Date.UTC(2026, 8, 6, 7))
+if (!sunPeakHour || Math.abs(sunPeakHour.input - 1.5) > 1e-9) throw new Error('生效后周日峰小时应为谷价')
+// 生效后工作日（周二 9/1 UTC 02:00）→ 峰价不变（上文 peak 已覆盖 9/1）
 // chat / reasoner 定向到 v4-flash 旧统一价：任意时刻（含峰谷时段）统一价
 const chat = priceAt('deepseek-chat', 'cny', Date.UTC(2026, 8, 1, 2))
 if (!chat || Math.abs(chat.input - 1) > 1e-9 || Math.abs(chat.cacheRead - 0.02) > 1e-9) throw new Error('chat 应定向 v4-flash 统一价')

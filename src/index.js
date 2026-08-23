@@ -1,7 +1,25 @@
 /**
- * Simple Dock node half. Pure UI plugin: the empty apply exists so the plugin
- * appears in the host cordis.yml / Loader; the browser half ships via
- * exports["./client"], discovered through the package.json dsh.client
- * declaration. All features run in the browser — no host-side behavior.
+ * Simple Dock node half. Registers the plugin's own settings namespace so the
+ * "设置 → 插件" card dispatches by it (the `settings.plugin.item` slot is
+ * keyed by the namespace the card edits). The card's enabled state lives in
+ * the browser half; this half only serves the namespace key. Everything else
+ * stays client-side — no network, no host behavior beyond the registration.
  */
-export function apply() {}
+import { settingsNamespace } from '@deepseek-ai/dsh-settings'
+import z from '@deepseek-ai/schemastery'
+
+/**
+ * Register the `simple-dock` namespace once the optional settings service is
+ * composed. The empty schema means the namespace owns no editable fields —
+ * the card stores its state in localStorage; the namespace exists purely so
+ * the plugin's card is served and dispatched in Settings → Plugins.
+ * @param ctx - Host context that may acquire the settings service.
+ */
+export function apply(ctx) {
+  ctx.inject(['settings'], (settingsCtx) => {
+    settingsCtx.settings.register(
+      settingsNamespace('simple-dock'),
+      z.object({}),
+    )
+  })
+}

@@ -2,7 +2,7 @@
 // 依赖：slots 服务（bundle 里由 dsh-client-runtime 提供）+ locale 服务
 //（dsh-client-locale，跟随 DSH 系统语言设置，不提供自己的切换按钮）。
 import {
-  applyGlassVars,
+  applyGlassVars, getEnabled, subscribeEnabled,
 } from './core.js'
 import {
   StatsDock, ModeRow, PricingRow, CurrencyRow, GlassRow, PluginCard,
@@ -48,14 +48,35 @@ export function apply(ctx) {
 
   // Composer dock: replaces the official stats line. Official one sits at
   // priority 0; shadowing needs a strictly lower priority (lowest renders).
-  slots.inject('conversation.composer.dock', () => slots.register(
-    { name: 'conversation.composer.dock', id: 'stats', priority: -1, label: 'stats' },
-    (props) => React.createElement(StatsDock, props),
-  ))
+  // 开关（设置 → 插件卡片）关闭时注销本注册，官方 stats 行恢复显示；
+  // 重新开启再注册。StatsDock 内部 enabled=false 返回 null 只是双保险。
+  let dockDisposer = null
+  // 订阅回调是无参调用（createPref 的 listener 不携带新值），所以这里
+  // 不接收参数、直接读当前 pref：停用 → 注销（官方 stats 行恢复显示），
+  // 启用 → 重新注册。StatsDock 内部 enabled=false 返回 null 只是双保险。
+  const syncDock = () => {
+    const on = getEnabled()
+    if (on && dockDisposer === null) {
+      dockDisposer = slots.inject('conversation.composer.dock', () => slots.register(
+        { name: 'conversation.composer.dock', id: 'stats', priority: -1, label: 'stats' },
+        (props) => React.createElement(StatsDock, props),
+      ))
+    } else if (!on && dockDisposer !== null) {
+      dockDisposer()
+      dockDisposer = null
+    }
+  }
+  ctx.effect(() => {
+    syncDock(getEnabled())
+    return subscribeEnabled(syncDock)
+  })
 
   // Settings → Plugins: master on/off card (same shape as other plugin cards).
+  // This slot is keyed by the settings namespace the card edits; the key must
+  // be one the Host serves — the `simple-dock` namespace registered by the
+  // node half — or the owner never dispatches the card.
   slots.inject('settings.plugin.item', () => slots.register(
-    { name: 'settings.plugin.item', id: 'simple-dock', order: 6, label: 'Simple Dock' },
+    { name: 'settings.plugin.item', key: 'simple-dock', order: 6, label: 'Simple Dock' },
     () => React.createElement(PluginCard, {}),
   ))
 

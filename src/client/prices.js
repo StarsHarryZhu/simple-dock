@@ -8,6 +8,16 @@
 export const PEAK_HOURS_UTC = [[1, 4], [6, 10]]
 // 峰谷计价生效时刻：2026-08-17T00:00:00Z（此前一律按旧统一价）。
 export const PEAK_START_MS = Date.UTC(2026, 7, 17)
+// 周末全天谷价生效时刻：2026-08-23 00:00 北京时间（= UTC 2026-08-22 16:00）。
+// 生效后：北京时间周六/周日全天按谷价；工作日维持 PEAK_HOURS_UTC 峰谷。
+export const WEEKEND_START_MS = Date.UTC(2026, 7, 22, 16)
+// 北京时间 = UTC+8。
+const BEIJING_OFFSET_MS = 8 * 60 * 60 * 1000
+
+// 消耗时刻的北京时间星期几（0=周日 … 6=周六）。
+function beijingDayOfWeek(atMs) {
+  return new Date(atMs + BEIJING_OFFSET_MS).getUTCDay()
+}
 
 // 内置价格表（每 1M tokens）。字段顺序与 DeepSeek 官方价目一致：
 // cacheRead（缓存命中输入）/ input（未命中输入）/ output（输出）。
@@ -57,7 +67,9 @@ function cap(s) {
 //   - 模型不存在 → null；
 //   - 无峰谷的模型 → 统一价；
 //   - 峰谷生效日（2026-08-17T00:00:00Z）之前 → 统一价；
-//   - 之后按消耗时刻的 UTC 小时落峰/谷时段取对应价。
+//   - 2026-08-23 00:00 北京时间（周末全天谷价）之后：北京时间周六/周日
+//     一律谷价；工作日按 UTC 小时落峰/谷；
+//   - 两生效日之间：仅按 UTC 小时落峰/谷。
 export function priceAt(modelId, currency, atMs) {
   const id = normalizeModelId(modelId)
   if (id === '') return null
@@ -72,7 +84,12 @@ export function priceAt(modelId, currency, atMs) {
   if (m.peakUsd === undefined || m.peakCny === undefined) return unified
   if (!(atMs >= PEAK_START_MS)) return unified
   const hour = new Date(atMs).getUTCHours()
-  const table = PEAK_HOURS_UTC.some(([s, e]) => hour >= s && hour < e)
+  let inPeak = PEAK_HOURS_UTC.some(([s, e]) => hour >= s && hour < e)
+  if (atMs >= WEEKEND_START_MS) {
+    const dow = beijingDayOfWeek(atMs)
+    if (dow === 0 || dow === 6) inPeak = false // 北京时间周末：全天谷价
+  }
+  const table = inPeak
     ? (m['peak' + cap(currency)] || m.peakUsd)
     : (m['offPeak' + cap(currency)] || m.offPeakUsd)
   return {
