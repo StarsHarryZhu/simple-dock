@@ -1,0 +1,6 @@
+# Simple Dock bundle patch layer: registers the client bundle row.
+# Installed via `dsh plugin --profile web add dsh-ui-simple-dock` (or
+# pnpm add); the loader merges this layer automatically — no manual edit.
+- insert:
+    - id: simple-dock
+      name: 'dsh-ui-simple-dock'

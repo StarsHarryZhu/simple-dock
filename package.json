@@ -25,16 +25,22 @@
         "@deepseek-ai/dsh-client-locale"
       ],
       "platform": "web"
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
     }
   },
   "files": [
     "lib",
     "src",
-    "README.md"
+    "README.md",
+    "AGENTS.md",
+    "cordis.patch.yml"
   ],
   "scripts": {
     "build": "node build.js",
-    "watch": "node build.js --watch"
+    "watch": "node build.js --watch",
+    "prepublishOnly": "node build.js"
   },
   "license": "MIT",
   "peerDependencies": {

@@ -2,7 +2,26 @@
 
 替换 DeepSeek Harness 网页端底栏的官方统计行，改成**左右双区、点击展开明细**的交互式统计坞。深浅色自适应，不依赖任何其他插件。界面文案**中英文双语，跟随 DSH 系统语言设置**（`设置 → 通用 → 语言`），无需单独切换。
 
-## 安装（手动，macOS / Linux）
+## 安装
+
+### 方式一：一行命令（推荐，标准 bundle 安装）
+
+本包声明了 `dsh.bundle`（自带 patch 层），安装后自动注册进 web profile 层栈，**无需手动改任何配置**：
+
+```sh
+# 从 npm registry（发布后）：
+dsh plugin --profile web add dsh-ui-simple-dock
+
+# 或本地源码（file: 复制快照 / link: 保持链接，改代码即生效）：
+dsh plugin --profile web add file:/path/to/simple-dock
+dsh plugin --profile web add link:/path/to/simple-dock
+
+# 重启 DSH 生效
+```
+
+> 若之前用手动方式装过（`cordis.patch.yml` 里手写过 `- insert: simple-dock`），**请删掉手动行**再装，避免同一行被 bundle 层与用户层各插入一次。
+
+### 方式二：手动（macOS / Linux）
 
 ### 1. 获取源码
 

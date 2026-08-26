@@ -21,10 +21,23 @@ token / estimated-cost panels.
   (token usage projection, model from session nodes, built-in price table with
   peak/off-peak tiers) is client-side and never fetches the network.
 
-## Install (manual — macOS / Linux)
+## Install
 
-There are no install scripts; users install by hand (full tutorial in
-`README.md`):
+**Recommended — one command (standard bundle)**: the package declares
+`dsh.bundle.patch` (its own `cordis.patch.yml`), so installing it as a
+profile dependency registers the row automatically — no manual patch edit:
+
+```sh
+dsh plugin --profile web add dsh-ui-simple-dock   # registry (after publish)
+dsh plugin --profile web add file:/path/to/simple-dock   # or link:/path for live dev
+# restart DSH
+```
+
+> If the row was previously added by hand in `cordis.patch.yml`, remove the
+> manual lines before installing to avoid a duplicate insert.
+
+**Manual (macOS / Linux)** — no install scripts; users install by hand
+(full tutorial in `README.md`):
 
 ```sh
 # 1. get the source and build (requires Node.js 18+)
