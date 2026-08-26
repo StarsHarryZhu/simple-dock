@@ -23,3 +23,7 @@ demo/
 # NOTE: lib/ is intentionally NOT ignored — the bundle ships its built
 # outputs (lib/index.js + lib/client.js) so git/tarball installs work
 # without running `node build.js` first (see AGENTS.md).
+
+# --- npm publish scratch (never commit) ---
+.npm-cache/
+.npm-cache-pub/
