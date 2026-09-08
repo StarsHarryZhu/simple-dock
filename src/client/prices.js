@@ -48,6 +48,11 @@ const ALIAS_UNIFIED = {
   'deepseek-chat': 'deepseek-v4-flash',
   'deepseek-reasoner': 'deepseek-v4-flash',
 }
+// 同价别名：deepseek-v4-flash-vision-exp 与 v4-flash 同价（官方
+// "Vision at Flash Price"），完全按 v4-flash 计费（含峰谷/周末谷价）。
+const ALIAS_SAME_PRICE = {
+  'deepseek-v4-flash-vision-exp': 'deepseek-v4-flash',
+}
 
 // 模型 id 归一化：去 provider 前缀、冒号、@ 与 [1m] 后缀，统一小写。
 export function normalizeModelId(modelId) {
@@ -78,7 +83,7 @@ export function priceAt(modelId, currency, atMs) {
     const base = FALLBACK_PRICES[alias]
     return base ? (base[currency] || base.usd || base.cny) : null
   }
-  const m = FALLBACK_PRICES[id]
+  const m = FALLBACK_PRICES[ALIAS_SAME_PRICE[id] ?? id]
   if (!m) return null
   const unified = m[currency] || m.usd || m.cny
   if (m.peakUsd === undefined || m.peakCny === undefined) return unified
