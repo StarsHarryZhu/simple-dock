@@ -141,7 +141,7 @@ i18n.setLocaleFace(() => () => { /* no-op */ }, () => 0, (key, params) => {
 })
 if (i18n.t('seg.steps') !== '步数') throw new Error('i18n zh 翻译失败')
 if (i18n.t('sub.calls', { count: 3, value: '1.2s' }) !== '3 次 · 均 1.2s/次') throw new Error('i18n 插值失败')
-const { normalizeModelId, priceAt, PEAK_START_MS, WEEKEND_START_MS } = await import(join(CLIENT_SRC, 'prices.js'))
+const { normalizeModelId, priceAt, PEAK_START_MS, WEEKEND_START_MS, FLASH_REVISION_START_MS } = await import(join(CLIENT_SRC, 'prices.js'))
 const core = await import(join(CLIENT_SRC, 'core.js'))
 
 if (normalizeModelId('openai/gpt-5@2025[1m]') !== 'gpt-5-2025') throw new Error('normalizeModelId 失败')
@@ -192,6 +192,40 @@ if (!visionSat || Math.abs(visionSat.input - 1.5) > 1e-9) throw new Error('visio
 const visionPre = priceAt('deepseek-v4-flash-vision-exp', 'usd', Date.UTC(2026, 7, 16, 2))
 if (!visionPre || Math.abs(visionPre.input - 0.14) > 1e-9) throw new Error('vision-exp 生效前应统一价')
 if (priceAt('gpt-5', 'usd', Date.now()) !== null) throw new Error('未知模型应返回 null')
+// flash 调价（2026-09-10 12:00 北京时间 = UTC 04:00）：
+// 生效前一刻（UTC 9/9 02:00 峰小时）→ 旧峰价（CNY 3）
+const sep9Peak = priceAt('deepseek-v4-flash', 'cny', Date.UTC(2026, 8, 9, 2))
+if (!sep9Peak || Math.abs(sep9Peak.input - 3) > 1e-9) throw new Error('9/9 应仍为旧峰价')
+// 生效瞬间（UTC 9/10 04:00，周四谷时段）→ 新谷价 CNY 0.02/1/4、USD 0.003/0.15/0.6
+const revOff = priceAt('deepseek-v4-flash', 'cny', FLASH_REVISION_START_MS)
+if (!revOff || Math.abs(revOff.input - 1) > 1e-9 || Math.abs(revOff.output - 4) > 1e-9 || Math.abs(revOff.cacheRead - 0.02) > 1e-9) throw new Error('9/10 生效瞬间应为新谷价 (CNY)')
+const revOffUsd = priceAt('deepseek-v4-flash', 'usd', FLASH_REVISION_START_MS)
+if (!revOffUsd || Math.abs(revOffUsd.input - 0.15) > 1e-9 || Math.abs(revOffUsd.output - 0.6) > 1e-9 || Math.abs(revOffUsd.cacheRead - 0.003) > 1e-9) throw new Error('9/10 生效瞬间应为新谷价 (USD)')
+// 新峰价（UTC 9/10 06:00 峰小时）：谷 × 2 → CNY 0.04/2/8、USD 0.006/0.3/1.2
+const revPeak = priceAt('deepseek-v4-flash', 'cny', Date.UTC(2026, 8, 10, 6))
+if (!revPeak || Math.abs(revPeak.input - 2) > 1e-9 || Math.abs(revPeak.output - 8) > 1e-9 || Math.abs(revPeak.cacheRead - 0.04) > 1e-9) throw new Error('9/10 新峰价失败 (CNY)')
+const revPeakUsd = priceAt('deepseek-v4-flash', 'usd', Date.UTC(2026, 8, 10, 6))
+if (!revPeakUsd || Math.abs(revPeakUsd.input - 0.3) > 1e-9 || Math.abs(revPeakUsd.output - 1.2) > 1e-9 || Math.abs(revPeakUsd.cacheRead - 0.006) > 1e-9) throw new Error('9/10 新峰价失败 (USD)')
+// pro 不受 flash 调价影响（UTC 9/10 06:00 峰 → 旧 CNY 9）
+const proRev = priceAt('deepseek-v4-pro', 'cny', Date.UTC(2026, 8, 10, 6))
+if (!proRev || Math.abs(proRev.input - 9) > 1e-9) throw new Error('pro 不应受 flash 调价影响')
+// 调价后的周末：北京周六（UTC 9/12 02:00）全天谷 → 新谷价 1
+const revSat = priceAt('deepseek-v4-flash', 'cny', Date.UTC(2026, 8, 12, 2))
+if (!revSat || Math.abs(revSat.input - 1) > 1e-9) throw new Error('调价后周末应新谷价')
+// vision-exp 调价后跟随 flash 新价（峰 2 / 谷 1）
+const visionRev = priceAt('deepseek-v4-flash-vision-exp', 'cny', Date.UTC(2026, 8, 10, 6))
+if (!visionRev || Math.abs(visionRev.input - 2) > 1e-9) throw new Error('vision-exp 调价后应等于 flash 新峰价')
+// chat / reasoner 仍定向 flash 旧统一价（不随峰谷/调价）
+const chatRev = priceAt('deepseek-chat', 'cny', Date.UTC(2026, 8, 10, 6))
+if (!chatRev || Math.abs(chatRev.input - 1) > 1e-9 || Math.abs(chatRev.cacheRead - 0.02) > 1e-9) throw new Error('chat 调价后应仍为 flash 旧统一价')
+// 调价后按步成本管线（UTC 9/10 峰/谷两步，CNY）
+const revStepNodes = [
+  { kind: 'assistant', time: Date.UTC(2026, 8, 10, 6), timing: { completedTime: Date.UTC(2026, 8, 10, 6) }, requestConfig: { model: 'deepseek-v4-flash' }, usage: { inputTokens: 1000, outputTokens: 500, cacheReadTokens: 2000 } },
+  { kind: 'assistant', time: Date.UTC(2026, 8, 10, 4), timing: { completedTime: Date.UTC(2026, 8, 10, 4) }, requestConfig: { model: 'deepseek-v4-flash' }, usage: { inputTokens: 1000, outputTokens: 500, cacheReadTokens: 2000 } },
+]
+const revCost = await core.computeSessionCost(revStepNodes, { uncached: 2000, read: 4000, write: 0, out: 1000 }, 'cny')
+const revExpect = (2000 * 0.04 + 1000 * 2 + 500 * 8) / 1e6 + (2000 * 0.02 + 1000 * 1 + 500 * 4) / 1e6
+if (!revCost.ok || Math.abs(revCost.cost.total - revExpect) > 1e-9) throw new Error('调价后按步取价失败: ' + JSON.stringify(revCost))
 
 if (core.fmtCost(0.00089628, 'usd') !== '$0.0009') throw new Error('fmtCost 失败')
 const folded = core.foldStats([

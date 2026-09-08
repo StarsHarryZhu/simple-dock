@@ -11,6 +11,10 @@ export const PEAK_START_MS = Date.UTC(2026, 7, 17)
 // 周末全天谷价生效时刻：2026-08-23 00:00 北京时间（= UTC 2026-08-22 16:00）。
 // 生效后：北京时间周六/周日全天按谷价；工作日维持 PEAK_HOURS_UTC 峰谷。
 export const WEEKEND_START_MS = Date.UTC(2026, 7, 22, 16)
+// flash 系列新价生效时刻：2026-09-10 12:00 北京时间（= UTC 04:00）。
+// 生效后：v4-flash（含 vision-exp 同价别名）改用 revised 峰谷价目；
+// 峰 = 谷 × 2；周末全天谷价规则继续适用。pro 不受影响。
+export const FLASH_REVISION_START_MS = Date.UTC(2026, 8, 10, 4)
 // 北京时间 = UTC+8。
 const BEIJING_OFFSET_MS = 8 * 60 * 60 * 1000
 
@@ -23,6 +27,8 @@ function beijingDayOfWeek(atMs) {
 // cacheRead（缓存命中输入）/ input（未命中输入）/ output（输出）。
 //   usd / cny     —— 统一价（2026-08-17 前）
 //   peakUsd/peakCny  —— 峰时段价；offPeak* —— 谷时段价（峰 × 0.5）
+//   revised（仅 flash）—— 2026-09-10 12:00 北京时间起的新峰谷价目，
+//     峰 = 谷 × 2；结构同 peak*/offPeak*。
 export const FALLBACK_PRICES = {
   'deepseek-v4-flash': {
     usd: { input: 0.14, output: 0.28, cacheRead: 0.0028 },
@@ -31,6 +37,14 @@ export const FALLBACK_PRICES = {
     peakCny: { input: 3, output: 9, cacheRead: 0.1 },
     offPeakUsd: { input: 0.22, output: 0.66, cacheRead: 0.007 },
     offPeakCny: { input: 1.5, output: 4.5, cacheRead: 0.05 },
+    // flash 调价（2026-09-10 12:00 北京时间 / UTC 04:00 生效）：
+    // 谷 0.003/0.15/0.6 USD = 0.02/1/4 CNY；峰 = 谷 × 2。
+    revised: {
+      peakUsd: { input: 0.3, output: 1.2, cacheRead: 0.006 },
+      peakCny: { input: 2, output: 8, cacheRead: 0.04 },
+      offPeakUsd: { input: 0.15, output: 0.6, cacheRead: 0.003 },
+      offPeakCny: { input: 1, output: 4, cacheRead: 0.02 },
+    },
   },
   'deepseek-v4-pro': {
     usd: { input: 0.435, output: 0.87, cacheRead: 0.003625 },
@@ -74,7 +88,9 @@ function cap(s) {
 //   - 峰谷生效日（2026-08-17T00:00:00Z）之前 → 统一价；
 //   - 2026-08-23 00:00 北京时间（周末全天谷价）之后：北京时间周六/周日
 //     一律谷价；工作日按 UTC 小时落峰/谷；
-//   - 两生效日之间：仅按 UTC 小时落峰/谷。
+//   - 两生效日之间：仅按 UTC 小时落峰/谷；
+//   - 2026-09-10 12:00 北京时间（flash 调价）之后：flash（含同价别名）
+//     改取 revised 峰谷价目，峰 = 谷 × 2；时段与周末规则不变。
 export function priceAt(modelId, currency, atMs) {
   const id = normalizeModelId(modelId)
   if (id === '') return null
@@ -94,9 +110,11 @@ export function priceAt(modelId, currency, atMs) {
     const dow = beijingDayOfWeek(atMs)
     if (dow === 0 || dow === 6) inPeak = false // 北京时间周末：全天谷价
   }
+  // flash 调价生效后换用新价目（仅 flash 携带 revised；pro 无 → 旧价目）。
+  const source = atMs >= FLASH_REVISION_START_MS && m.revised !== undefined ? m.revised : m
   const table = inPeak
-    ? (m['peak' + cap(currency)] || m.peakUsd)
-    : (m['offPeak' + cap(currency)] || m.offPeakUsd)
+    ? (source['peak' + cap(currency)] || source.peakUsd)
+    : (source['offPeak' + cap(currency)] || source.offPeakUsd)
   return {
     input: table.input ?? 0,
     output: table.output ?? 0,
