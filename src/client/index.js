@@ -10,8 +10,15 @@ import {
 import { NS, dicts, setLocaleFace, t } from './i18n.js'
 import { css } from './styles.js'
 
-/** Required services: the slot registry (runtime provides it). */
-export const inject = ['slots']
+/**
+ * Required services: the slot registry plus the locale runtime. Both are
+ * inject-declared so Cordis activates this plugin only after they exist:
+ * the locale roster row (dsh-client-locale) may apply after this one, and a
+ * bare ctx.get('locale') at apply time can then miss it and silently leave
+ * every label on the key-string fallback. Injecting 'locale' makes Cordis
+ * wait for the service instead.
+ */
+export const inject = ['slots', 'locale']
 
 /**
  * Client plugin body: inject the stylesheet (plugin-owned style tag, removed

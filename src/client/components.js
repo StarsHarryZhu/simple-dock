@@ -100,7 +100,16 @@ export function StatsDock(props) {
     return () => document.removeEventListener('pointerdown', onPointerDown, true)
   }, [leftOpen, rightOpen])
 
-  const session = (typeof props.useSession === 'function' ? props.useSession(s => s) : undefined) || props.session
+  // ---- 数据源（随 DSH 版本演进，双通道防御） ----
+  // 新版（0.1.2+）：SessionSnapshot 不再携带会话节点，会话内容走 useChat
+  //（ChatSnapshot 选择器，legacy.nodes 为兼容投影，字段与旧版一致）。
+  // 旧版：useSession 返回含 chat.legacy.nodes 的大快照。
+  const useChat = typeof props.useChat === 'function' ? props.useChat : null
+  const chatNodes = useChat === null
+    ? undefined
+    : useChat(s => (s && s.legacy && Array.isArray(s.legacy.nodes) ? s.legacy.nodes : []))
+  const useSession = typeof props.useSession === 'function' ? props.useSession : null
+  const session = useSession === null ? props.session : useSession(s => s)
   const useProjection = typeof props.useProjection === 'function' ? props.useProjection : null
   const usageProjection = useProjection === null ? undefined : useProjection('tokenUsage')
   const statsProjection = useProjection === null ? undefined : useProjection('sessionStats')
@@ -112,9 +121,11 @@ export function StatsDock(props) {
     ? props.useSessions(st => (st && st.byId && sessionId !== undefined ? st.byId[sessionId] : undefined))
     : undefined
 
-  const nodes = (session && session.chat && session.chat.legacy && session.chat.legacy.nodes)
-    || (session && session.nodes)
-    || []
+  const nodes = chatNodes !== undefined
+    ? chatNodes
+    : (session && session.chat && session.chat.legacy && session.chat.legacy.nodes)
+      || (session && session.nodes)
+      || []
   const folded = React.useMemo(() => foldStats(nodes), [nodes])
   const stats = statsProjection || folded
   const usage = React.useMemo(() => readUsage(usageProjection), [usageProjection])

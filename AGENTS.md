@@ -14,11 +14,16 @@ token / estimated-cost panels.
   row in the web profile's `cordis.patch.yml`. No approval flow: bundles load
   automatically once the composition includes them.
 - **Runtime dependencies**: the browser half needs only `react` (loader
-  platform module) plus the `slots` service. The node half imports
-  `@deepseek-ai/dsh-settings` and `@deepseek-ai/schemastery` for the namespace
-  registration; those must resolve from the package's local `node_modules`
-  (symlinked to the profile's shared store, see Install). Everything else
-  (token usage projection, model from session nodes, built-in price table with
+  platform module) plus the `slots` and `locale` services — both must be
+  inject-declared (`export const inject = ['slots', 'locale']`): the locale
+  roster row (dsh-client-locale) can apply after this plugin, and a bare
+  `ctx.get('locale')` at apply time would then miss it and leave every label
+  on the raw-key fallback. The node half imports only
+  `@deepseek-ai/schemastery` (the empty schema) and registers the namespace
+  through the injected `settings` service (no value import of dsh-settings
+  needed); schemastery must resolve from the package's local `node_modules`
+  when installed manually via symlink (see Install). Everything else (token
+  usage projection, model from session nodes, built-in price table with
   peak/off-peak tiers) is client-side and never fetches the network.
 
 ## Install
@@ -48,11 +53,10 @@ node build.js
 DSH_HOME="${DSH_HOME:-$HOME/.dsh}"
 ln -sfn "$PWD" "$DSH_HOME/profiles/node_modules/dsh-ui-simple-dock"
 
-# 3. link the node-half deps into the package's local node_modules
-#    (the node half imports @deepseek-ai/dsh-settings + @deepseek-ai/schemastery;
-#    Node resolves symlinked packages by realpath, so these must exist locally)
+# 3. link the node-half dep into the package's local node_modules
+#    (the node half imports @deepseek-ai/schemastery for the empty schema;
+#    Node resolves symlinked packages by realpath, so it must exist locally)
 mkdir -p node_modules/@deepseek-ai
-ln -sfn "$DSH_HOME/profiles/node_modules/@deepseek-ai/dsh-settings" node_modules/@deepseek-ai/dsh-settings
 ln -sfn "$DSH_HOME/profiles/node_modules/@deepseek-ai/schemastery"  node_modules/@deepseek-ai/schemastery
 
 # 4. register the bundle: append to $DSH_HOME/profiles/web/cordis.patch.yml

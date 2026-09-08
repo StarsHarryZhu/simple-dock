@@ -5,7 +5,6 @@
  * the browser half; this half only serves the namespace key. Everything else
  * stays client-side — no network, no host behavior beyond the registration.
  */
-import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
 
 /**
@@ -17,9 +16,6 @@ import z from '@deepseek-ai/schemastery'
  */
 export function apply(ctx) {
   ctx.inject(['settings'], (settingsCtx) => {
-    settingsCtx.settings.register(
-      settingsNamespace('simple-dock'),
-      z.object({}),
-    )
+    settingsCtx.settings.register('simple-dock', z.object({}))
   })
 }
