@@ -238,7 +238,7 @@ export async function computeSessionCost(nodes, usage, currencyCode) {
 // 后台更新后替换；插件运行期间后台每小时刷新一次。 ----
 // 缓存带 PRICE_VERSION：内置价格表升级后旧条目自动失效（版本不符视为无缓存）。
 const COST_CACHE_PREFIX = 'dsh.dstat.cost.'
-export const PRICE_VERSION = 6
+export const PRICE_VERSION = 7
 
 export function readCostCache(sessionId) {
   try {
