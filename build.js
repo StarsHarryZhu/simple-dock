@@ -273,6 +273,24 @@ if (!preCost.ok || Math.abs(preCost.cost.total - preExpect) > 1e-9) throw new Er
 // 未知模型：全部步无价 → ok:false
 const unk = await core.computeSessionCost([{ kind: 'assistant', requestConfig: { model: 'gpt-5' } }], usage, 'usd')
 if (unk.ok !== false || !unk.error.startsWith('未知模型价格')) throw new Error('未知模型分支失败')
+// 差额兜底：缺 usage 的用量按「已计价部分的平均单价」补算，不因末步落在
+// 调价后的新价区间而把历史用量整体按新价折算（调价后尤其明显）。
+const mixNodes = [
+  { kind: 'assistant', time: PK, timing: { completedTime: PK }, requestConfig: { model: 'deepseek-v4-flash' }, usage: { inputTokens: 1000, outputTokens: 500, cacheReadTokens: 2000 } },
+  { kind: 'assistant', time: Date.UTC(2026, 8, 10, 6), timing: { completedTime: Date.UTC(2026, 8, 10, 6) }, requestConfig: { model: 'deepseek-flash' } },
+]
+const mixUsage = { uncached: 4000, read: 8000, write: 0, out: 2000 }
+const mixCost = await core.computeSessionCost(mixNodes, mixUsage, 'cny')
+const mixPriced = (2000 * 0.1 + 1000 * 3 + 500 * 9) / 1e6
+const mixExpect = mixPriced + (6000 * 0.1 + 3000 * 3 + 1500 * 9) / 1e6
+if (!mixCost.ok || Math.abs(mixCost.cost.total - mixExpect) > 1e-9) throw new Error('兜底应按平均单价补算失败: ' + JSON.stringify(mixCost))
+const mixWrong = mixPriced + (6000 * 0.04 + 3000 * 2 + 1500 * 8) / 1e6
+if (Math.abs(mixCost.cost.total - mixWrong) < 1e-9) throw new Error('兜底不应按末次时刻（新价）折算')
+// 无任何已计价样本时仍退回末次时刻价（不回归为 0）
+const onlyLeftover = await core.computeSessionCost(
+  [{ kind: 'assistant', time: OP, timing: { completedTime: OP }, requestConfig: { model: 'deepseek-v4-flash' } }],
+  { uncached: 0, read: 1000, write: 0, out: 0 }, 'cny')
+if (!onlyLeftover.ok || Math.abs(onlyLeftover.cost.total - (1000 * 0.05) / 1e6) > 1e-9) throw new Error('无样本兜底失败: ' + JSON.stringify(onlyLeftover))
 const model = core.currentModel([{ kind: 'user' }, { kind: 'assistant', provenance: { model: 'deepseek-v4-flash' } }])
 if (model !== 'deepseek-v4-flash') throw new Error('currentModel 失败')
-console.log('smoke OK（i18n/归一化/峰谷取价/格式化/折叠/按步成本管线/未知模型）')
+console.log('smoke OK（i18n/归一化/峰谷取价/格式化/折叠/按步成本管线/差额兜底/未知模型）')
