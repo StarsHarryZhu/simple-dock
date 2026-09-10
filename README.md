@@ -130,6 +130,7 @@ New-Item -ItemType Junction -Path "C:\path\to\simple-dock\node_modules\@deepseek
 - **周末全天谷价**：2026-08-23 00:00（北京时间）起，北京时间周六、周日全天按谷价（谷时段价）；工作日维持峰谷时段
 - **flash 调价**：2026-09-10 12:00（北京时间）起 v4-flash（含 vision-exp）改用新价目：谷 = 缓存命中 0.02 / 未命中 1 / 输出 4 元（USD 0.003 / 0.15 / 0.6），峰 = 谷 × 2；周末规则不变；v4-pro 不受影响
 - **deepseek-chat / deepseek-reasoner**：自动按 v4-flash 的旧统一价计价（不参与峰谷）
+- **模型 id 归一**：`deepseek-flash`（flash 短 id）与 `deepseek-v4-flash-vision-exp` 都按 v4-flash 同价计（含峰谷、周末与调价）
 - 每次推理请求都会读取它的完成时刻（精确到毫秒）与该步所用模型，峰/谷价互不串算
 - 其他不在内置表中的模型不显示预估费用
 

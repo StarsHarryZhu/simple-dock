@@ -215,6 +215,15 @@ if (!revSat || Math.abs(revSat.input - 1) > 1e-9) throw new Error('调价后周�
 // vision-exp 调价后跟随 flash 新价（峰 2 / 谷 1）
 const visionRev = priceAt('deepseek-v4-flash-vision-exp', 'cny', Date.UTC(2026, 8, 10, 6))
 if (!visionRev || Math.abs(visionRev.input - 2) > 1e-9) throw new Error('vision-exp 调价后应等于 flash 新峰价')
+// deepseek-flash（flash 系列短 id）与 v4-flash 完全同价：调价前旧谷价、调价后新峰/谷价
+const shortPre = priceAt('deepseek-flash', 'cny', Date.UTC(2026, 8, 1, 5))
+if (!shortPre || Math.abs(shortPre.input - 1.5) > 1e-9) throw new Error('deepseek-flash 调价前应为旧谷价')
+const shortOff = priceAt('deepseek-flash', 'cny', Date.UTC(2026, 8, 10, 4))
+if (!shortOff || Math.abs(shortOff.input - 1) > 1e-9 || Math.abs(shortOff.cacheRead - 0.02) > 1e-9) throw new Error('deepseek-flash 调价后应为新谷价')
+const shortPeak = priceAt('deepseek-flash', 'usd', Date.UTC(2026, 8, 10, 6))
+if (!shortPeak || Math.abs(shortPeak.input - 0.3) > 1e-9 || Math.abs(shortPeak.output - 1.2) > 1e-9 || Math.abs(shortPeak.cacheRead - 0.006) > 1e-9) throw new Error('deepseek-flash 调价后应为新峰价 (USD)')
+// 大小写/前缀归一化后同样命中
+if (priceAt('DeepSeek/DeepSeek-Flash', 'cny', Date.UTC(2026, 8, 10, 6)) === null) throw new Error('deepseek-flash 归一化失败')
 // chat / reasoner 仍定向 flash 旧统一价（不随峰谷/调价）
 const chatRev = priceAt('deepseek-chat', 'cny', Date.UTC(2026, 8, 10, 6))
 if (!chatRev || Math.abs(chatRev.input - 1) > 1e-9 || Math.abs(chatRev.cacheRead - 0.02) > 1e-9) throw new Error('chat 调价后应仍为 flash 旧统一价')

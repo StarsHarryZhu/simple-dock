@@ -62,10 +62,13 @@ const ALIAS_UNIFIED = {
   'deepseek-chat': 'deepseek-v4-flash',
   'deepseek-reasoner': 'deepseek-v4-flash',
 }
-// 同价别名：deepseek-v4-flash-vision-exp 与 v4-flash 同价（官方
-// "Vision at Flash Price"），完全按 v4-flash 计费（含峰谷/周末谷价）。
+// 同价别名：与 v4-flash 完全同价（含峰谷/周末谷价与 2026-09-10 新价）。
+//   deepseek-v4-flash-vision-exp —— 官方 "Vision at Flash Price"
+//   deepseek-flash                —— flash 系列的短 id（llm-deepseek 模型表
+//                                    里的默认条目）
 const ALIAS_SAME_PRICE = {
   'deepseek-v4-flash-vision-exp': 'deepseek-v4-flash',
+  'deepseek-flash': 'deepseek-v4-flash',
 }
 
 // 模型 id 归一化：去 provider 前缀、冒号、@ 与 [1m] 后缀，统一小写。

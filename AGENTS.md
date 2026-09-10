@@ -134,6 +134,14 @@ dynamic/            legacy session-scoped dynamic-plugin sources (not used)
 assets/ demo/       screenshots and recordings
 ```
 
+## Portfolio archival
+
+- When this project has an intro brief, mirror it into the personal
+  portfolio repo under `projects/` as `<proj_name>_intro.md` (project
+  directory name; here `simple-dock_intro.md`):
+  `/Users/starfield/Documents/projets/StarsHarryZhu.github.io/projects/simple-dock_intro.md`
+  Generate the brief if missing; overwrite the file when the intro changes.
+
 ## Notes
 
 - Keep the node half minimal: it registers the `simple-dock` settings
