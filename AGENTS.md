@@ -7,13 +7,18 @@ token / estimated-cost panels.
 
 ## What this package is
 
-- **Bundle type**: UI plugin with a thin node half. The node half registers the
-  `simple-dock` settings namespace (the browser card is keyed by it) and serves
-  one same-origin, read-only endpoint, `/dsh-simple-dock/api/steps`, returning
-  a session's per-step usage read through the Host's own `sessionPersistence`.
-  The browser half prices costs from that complete log; the endpoint exists
-  because the Client's conversation nodes are only the rows its window has
-  loaded, so pricing history from nodes alone drifted with the visible range.
+- **Bundle type**: UI plugin with a node half that owns the cost engine. The
+  node half (a) registers the `simple-dock` settings namespace the browser card
+  is keyed by, (b) prices every stored session at startup — a session with no
+  cost record yet (fresh install) is **fully backfilled** — then keeps each
+  session current from the `session/event` append feed, and (c) persists each
+  priced step into its own session log as one `simple-dock/cost` event
+  (`ignorable: true`), so the cost travels with the session record and survives
+  a restart without recomputation. It also serves one same-origin endpoint,
+  `/dsh-simple-dock/api/cost`, that returns the session's — plus its subagent
+  descendants' — merged totals. The browser half only renders that number; it
+  re-prices locally only when the endpoint is unavailable, because the Client's
+  own conversation nodes are just the rows its window has loaded.
 - **Registration**: `dsh.client` declaration in `package.json` + one insert
   row in the web profile's `cordis.patch.yml`. No approval flow: bundles load
   automatically once the composition includes them.
@@ -22,15 +27,13 @@ token / estimated-cost panels.
   inject-declared (`export const inject = ['slots', 'locale']`): the locale
   roster row (dsh-client-locale) can apply after this plugin, and a bare
   `ctx.get('locale')` at apply time would then miss it and leave every label
-  on the raw-key fallback. The node half imports only
-  `@deepseek-ai/schemastery` and progressively injects the optional `settings`
-  (namespace registration), and `webServer` + `sessionPersistence` (the steps
-  endpoint) services — no value import of dsh-settings is needed, and no
-  endpoint is registered where `webServer` is absent; schemastery must resolve
-  from the package's local `node_modules` when installed manually via symlink
-  (see Install). Everything else (token usage projection, model from session
-  nodes, built-in price table with peak/off-peak tiers) is client-side and
-  never fetches an external price table.
+  on the raw-key fallback. The node half imports `@deepseek-ai/schemastery`
+  plus the shared `./prices.js`, and injects `sessionPersistence` (the engine;
+  required) plus the optional `settings` and `webServer` (no endpoint is
+  registered where `webServer` is absent). schemastery must resolve from the
+  package's local `node_modules` when installed manually via symlink (see
+  Install). Pricing rules and the price table live in `src/prices.js`, shared
+  by both halves, and never fetch an external price table.
 
 ## Install
 
@@ -103,19 +106,30 @@ new bundle rows. After restart, the dynamic per-session copy of this plugin
    `设置 → 通用设置` shows the four rows (底栏面板样式 / 价格表 /
    成本计价币种 / 面板玻璃). Check the browser console for
    `client-modules` load errors if anything is missing.
-4. Steps endpoint (web profile only): the cost line carries the
-   `完整记录` / "full log" marker when the browser half priced the complete
-   log. The endpoint itself answers per-step rows for a stored session:
+4. Cost engine and endpoint (web profile only):
 
    ```sh
-   curl -s "http://127.0.0.1:3080/dsh-simple-dock/api/steps?sessionId=<session-id>"
+   curl -s "http://127.0.0.1:3080/dsh-simple-dock/api/cost?sessionId=<session-id>"
    ```
 
-   → `{"ok":true,"steps":[{"time":…,"model":…,"uncached":…,"read":…,"write":…,"out":…}]}`.
+   → `{"ok":true,"steps":N,"totals":{"usd":{…},"cny":{…}},"subagents":{…},…}`.
    A `401` means the web session is not authenticated, `403` an off-origin
    caller, `404 {ok:false,"reason":"session-unreadable"}` an unknown session —
    none of those is a plugin defect, and each one makes the browser half fall
-   back to its node path.
+   back to its own node path. At startup the log line
+   `[simple-dock] cost warm-up done: …` reports how many sessions were priced.
+5. Persistence check: after a step completes (or after a restart backfills an
+   old session), the session log carries one `simple-dock/cost` event per
+   assistant step:
+
+   ```sh
+   zstd -dc "$DSH_HOME/sessions/<encoded-cwd>/<session-dir>/session.v2.jsonl.zstd" | grep -c simple-dock/cost
+   ```
+
+   Each event must be `ignorable: true` with a contiguous `seq`, and the
+   session must still reload in DSH (an unrecognized *ignorable* event is
+   skipped on read; an unrecognizable required one would refuse the log — never
+   write a cost event without the marker).
 
 ## Uninstall
 
@@ -132,22 +146,29 @@ rm "$DSH_HOME/profiles/node_modules/dsh-ui-simple-dock"
 node build.js
 ```
 
-Zero-dependency bundler: merges `src/client/*.js` into `lib/client.js`
+Zero-dependency bundler: merges `src/client/*.js` plus the shared
+`src/prices.js` into `lib/client.js`
 (`window.__ModuleLoader__.load({ id, factory })` format, `react` external),
-copies the node half to `lib/index.js`, writes hand-typed `lib/types/*`.
+copies the node half to `lib/index.js` and the shared price module to
+`lib/prices.js`, writes hand-typed `lib/types/*`.
 Build-time checks: syntax + smoke tests (zh/en dictionary key parity,
 model normalization, peak/off-peak price lookup with the 2026-08-17
 effective date and UTC peak-hour boundaries, the 2026-08-23 Beijing-time
 weekend all-day off-peak rule, per-step cost pipeline priced at each step's
-completion time, the averaged leftover fallback, the node-half step
-projection and the host-priced path, unknown-model branch). Do not edit
-`lib/` by hand — it is generated.
+completion time, the averaged leftover fallback, and the node-half cost
+engine through a stubbed Host context: full backfill of a session without
+cost records, baseline reuse, price-version invalidation, live increments
+without double pricing, parent/subagent merging, cost-event shape
+(`ignorable`, contiguous `seq`), deferred writes while a session is still
+owned, and every endpoint branch). Do not edit `lib/` by hand — it is
+generated.
 
 ## Layout
 
 ```
-src/index.js        node half (settings namespace + /dsh-simple-dock/api/steps)
-src/client/         i18n.js · prices.js · core.js · components.js · index.js · styles.css
+src/index.js        node half (settings namespace + cost engine + /api/cost)
+src/prices.js       shared price table and pricing rules (both halves)
+src/client/         i18n.js · core.js · components.js · index.js · styles.css
 lib/                built outputs (committed for git installs)
 build.js            the bundler
 dynamic/            legacy session-scoped dynamic-plugin sources (not used)
@@ -164,14 +185,19 @@ assets/ demo/       screenshots and recordings
 
 ## Notes
 
-- Keep the node half small and read-only: it registers the `simple-dock`
-  settings namespace (an empty schema — the card stores its state in
-  localStorage) and serves the same-origin steps endpoint through
-  `sessionPersistence`. It must never write session data, never reach the
-  network, and never return message text — only per-step token counts, times
-  and model ids. No endpoint is registered when `webServer` is absent, and a
-  read failure answers `{ ok: false }` so the browser half falls back to its
-  own node path.
+- The node half owns the cost engine and is otherwise inert. Its only session
+  write is the `simple-dock/cost` event, only on format-v3 sessions, always
+  with `ignorable: true` and a contiguous `seq`; it never writes message text,
+  never mutates other events, and never reaches the network. Pricing reads are
+  read-only handles; a session still held by its agent refuses `open(id,'write')`
+  and its steps stay in memory until `session/disposed` or the next startup.
+  No endpoint is registered when `webServer` is absent, and any read/write
+  failure degrades silently (endpoint `{ ok:false }`, browser half falls back
+  to its own node path).
+- Startup warm-up prices every stored session with `WARM_CONCURRENCY` workers
+  and logs one `cost warm-up done` line; a session with no usable cost record
+  (absent, or written under a different `PRICE_VERSION`) is fully re-priced and
+  written back, which is the fresh-install backfill path.
 - The settings plugin card and general rows are plain slot registrations
   (`settings.plugin.item` key `simple-dock` — keyed slots dispatch by the
   served namespace, not an id — `settings.general.item` ids `dstat-*`,

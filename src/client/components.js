@@ -5,8 +5,7 @@ import {
   getPanelMode, setPanelMode, subscribePanelMode,
   getCurrency, setCurrency, subscribeCurrency,
   getBlurPref, getFrostPref, setBlurPref, setFrostPref, subscribeGlass,
-  readCostCache, writeCostCache, scheduleInterval,
-  computeSessionCostFor,
+  loadSessionCost,
   num, fmtExact, fmtDuration, fmtTps, fmtCost, formatClock,
   foldStats, stepReading, readUsage,
 } from './core.js'
@@ -139,60 +138,41 @@ export function StatsDock(props) {
   const running = summary ? summary.running : undefined
   const clock = summary && typeof summary.updatedAt === 'number' ? formatClock(summary.updatedAt) : null
 
-  // ---- 会话费用（纯客户端）：单行「预估成本 金额 ↻」 ----
-  // 打开面板：先显示该会话缓存的上次结果（不闪加载），后台更新成功后
-  // 替换显示并写回缓存；更新失败时保留当前显示。
+  // ---- 会话费用：单行「预估成本 金额 ↻」 ----
+  // host 半区维护成本（启动预算 + 新步增量 + 每步写回会话记录），这里只读
+  // 结果；端点不可用时回退到页面节点计价。↻ 强制 host 重算该会话。
   const [costState, setCostState] = React.useState({ loading: false, data: null, error: null })
   const [costTick, setCostTick] = React.useState(0)
+  const forceRefresh = React.useRef(false)
   const currency = React.useSyncExternalStore(subscribeCurrency, getCurrency)
 
   React.useEffect(() => {
     if (!rightOpen || usage === null) return
-    let alive = true
     if (sessionId === undefined) return
-    const cached = readCostCache(sessionId)
-    if (cached !== null && cached.data && cached.data.currency === currency) {
-      setCostState({ loading: false, data: cached.data, error: null })
-    } else {
-      setCostState((s) => ({ ...s, loading: true }))
-    }
-    computeSessionCostFor(sessionId, nodes, usage, currency)
+    let alive = true
+    const refresh = forceRefresh.current
+    forceRefresh.current = false
+    setCostState((s) => ({ ...s, loading: true }))
+    loadSessionCost(sessionId, nodes, usage, currency, refresh)
       .then((res) => {
-        if (!alive || !res) return
-        if (res.ok === true) {
-          writeCostCache(sessionId, res)
-          setCostState({ loading: false, data: res, error: null })
-        } else {
-          setCostState((s) => ({ ...s, loading: false, error: s.data ? null : (res.error || '无响应') }))
-        }
+        if (!alive) return
+        if (res && res.ok === true) setCostState({ loading: false, data: res, error: null })
+        else setCostState((s) => ({ loading: false, data: s.data, error: (res && res.error) || '无响应' }))
       })
       .catch((e) => {
         if (!alive) return
-        setCostState((s) => ({ ...s, loading: false, error: s.data ? null : String((e && e.message) || e) }))
+        setCostState((s) => ({ loading: false, data: s.data, error: String((e && e.message) || e) }))
       })
     return () => { alive = false }
   }, [rightOpen, sessionId, costTick, currency, nodes, usage])
 
-  // 后台每小时刷新一次当前会话的缓存（即使面板未打开）；启动即刷一次预热。
-  React.useEffect(() => {
-    if (sessionId === undefined || usage === null) return
-    const refresh = () => {
-      computeSessionCostFor(sessionId, nodes, usage, currency)
-        .then((res) => { if (res && res.ok === true) writeCostCache(sessionId, res) })
-        .catch(() => { /* 后台失败静默，下小时重试 */ })
-    }
-    refresh()
-    const disposer = scheduleInterval(refresh, 60 * 60 * 1000)
-    return () => { if (disposer !== null) disposer() }
-  }, [sessionId, currency, nodes, usage])
-
   const costLine = (() => {
     const data = costState.data
     if (data && data.ok === true) {
-      return {
-        value: fmtCost(data.cost.total, data.currency),
-        sub: data.source === 'host' ? t('cost.source.host') : t('cost.source.session'),
-      }
+      // 全部步都不在内置价格表：不显示金额。
+      if (data.steps === 0 && data.unpriced > 0) return { value: '—', sub: t('cost.notInTable') }
+      const pick = data.totals && (data.totals[currency] || data.totals.usd || data.totals.cny)
+      return { value: pick ? fmtCost(pick.total, data.currency || currency) : '—', sub: '' }
     }
     if (data && data.ok === false) {
       const msg = data.error || ''
@@ -209,7 +189,7 @@ export function StatsDock(props) {
 
   const refreshCost = React.createElement('button', {
     className: 'dsstat-refresh' + (costState.loading ? ' busy' : ''),
-    onClick: (e) => { e.stopPropagation(); setCostTick((t) => t + 1) },
+    onClick: (e) => { e.stopPropagation(); forceRefresh.current = true; setCostTick((t) => t + 1) },
     title: t('cost.recalc'),
     'aria-label': t('cost.recalc'),
   }, costState.loading ? '…' : '↻')

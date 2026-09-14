@@ -53,16 +53,18 @@ function entryParts(file) {
 }
 
 // 按依赖序拼接：普通模块 + 入口（CSS 常量 + apply 函数体）。
-const CLIENT_ORDER = ['i18n.js', 'prices.js', 'core.js', 'components.js', 'index.js']
+// prices.js 放在 src/ 根：浏览器半区与 node 半区共用同一份价格表。
+const CLIENT_MODULES = [
+  join(CLIENT_SRC, 'i18n.js'),
+  join(SRC, 'prices.js'),
+  join(CLIENT_SRC, 'core.js'),
+  join(CLIENT_SRC, 'components.js'),
+]
 
 function buildClientBody() {
   let body = ''
-  for (const file of CLIENT_ORDER) {
-    const text = file === 'index.js'
-      ? entryParts(join(CLIENT_SRC, file))
-      : moduleBody(join(CLIENT_SRC, file))
-    body += text + '\n'
-  }
+  for (const file of CLIENT_MODULES) body += moduleBody(file) + '\n'
+  body += entryParts(join(CLIENT_SRC, 'index.js')) + '\n'
   return body.trimEnd() + '\n'
 }
 
@@ -90,15 +92,27 @@ const clientBody = buildClientBody()
 const clientBundle = buildClientBundle(clientBody)
 writeFileSync(join(LIB, 'client.js'), clientBundle)
 
-// node 半区：原样复制（纯 ESM，无转换）。
+// node 半区：原样复制（纯 ESM，无转换）+ 共享价格表（相对 import）。
 const nodeHalf = read(join(SRC, 'index.js'))
 writeFileSync(join(LIB, 'index.js'), nodeHalf)
+writeFileSync(join(LIB, 'prices.js'), read(join(SRC, 'prices.js')))
 
 // 手写类型声明（JS 包的最小契约）。
-writeFileSync(join(LIB, 'types', 'index.d.ts'), `/** Simple Dock node half: settings namespace + same-origin step endpoint. */
+writeFileSync(join(LIB, 'types', 'index.d.ts'), `/** Simple Dock node half: settings namespace + cost engine + cost endpoint. */
 import type { Context } from '@deepseek-ai/cordis';
-/** One per-step usage row served to the client cost engine. */
+
+/** Cost breakdown for one currency, per 1M-token rates. */
+export interface CostBreakdown {
+  readonly hit: number;
+  readonly miss: number;
+  readonly out: number;
+  readonly total: number;
+}
+/** Totals keyed by the currencies the engine prices. */
+export type CostTotals = Record<string, CostBreakdown>;
+/** One usage-bearing assistant step read from a stored session log. */
 export interface StepUsageRow {
+  readonly seq: number | null;
   readonly time: number | null;
   readonly model: string | null;
   readonly uncached: number;
@@ -106,9 +120,37 @@ export interface StepUsageRow {
   readonly write: number;
   readonly out: number;
 }
+/** One session's priced cost plus the steps not yet written to its log. */
+export interface SessionCostEntry {
+  readonly id: string;
+  readonly header: { readonly parentSession: string | null; readonly origin: string | null; readonly version: number | null };
+  seq: number | null;
+  steps: number;
+  totals: CostTotals;
+  pending: readonly unknown[];
+  unpriced: number;
+}
 /** Project stored session events onto per-step usage rows. */
 export declare function stepsFromEvents(events: readonly unknown[]): StepUsageRow[];
-/** Register the settings namespace and (when composed) the steps endpoint. */
+/** Price one step in every currency; null when no currency knows the model. */
+export declare function costOfStep(step: StepUsageRow): CostTotals | null;
+/** Zero totals across every priced currency. */
+export declare function zeroTotals(): CostTotals;
+/** Add one step's per-currency cost onto running totals. */
+export declare function addTotals(totals: CostTotals, stepCost: CostTotals | null): CostTotals;
+/** Newest usable cost record in a log, or null ({} when absent). */
+export declare function baselineFromEvents(events: readonly unknown[]): { seq: number | null; steps: number; totals: CostTotals } | null;
+/** Full backfill (no cost record) or incremental pricing from the baseline. */
+export declare function entryFromEvents(id: string, header: unknown, events: readonly unknown[]): SessionCostEntry;
+/** Accumulate one live step; false when it was already priced. */
+export declare function applyLiveStep(entry: SessionCostEntry, step: StepUsageRow): boolean;
+/** Merge a session with every descendant reached through header.parentSession. */
+export declare function mergeLineage(entries: Map<string, SessionCostEntry>, id: string): { steps: number; totals: CostTotals; subagents: { sessions: number; steps: number; totals: CostTotals } };
+/**
+ * Register the settings namespace, warm/price every stored session, persist
+ * each priced step as an ignorable 'simple-dock/cost' session event, and serve
+ * GET /dsh-simple-dock/api/cost?sessionId=&lt;id&gt;[&refresh=1].
+ */
 export declare function apply(ctx: Context): void;
 `)
 writeFileSync(join(LIB, 'types', 'client', 'index.d.ts'), `/** Simple Dock client plugin body. */
@@ -152,7 +194,7 @@ i18n.setLocaleFace(() => () => { /* no-op */ }, () => 0, (key, params) => {
 })
 if (i18n.t('seg.steps') !== '步数') throw new Error('i18n zh 翻译失败')
 if (i18n.t('sub.calls', { count: 3, value: '1.2s' }) !== '3 次 · 均 1.2s/次') throw new Error('i18n 插值失败')
-const { normalizeModelId, priceAt, PEAK_START_MS, WEEKEND_START_MS, FLASH_REVISION_START_MS } = await import(join(CLIENT_SRC, 'prices.js'))
+const { normalizeModelId, priceAt, PRICE_VERSION, PEAK_START_MS, WEEKEND_START_MS, FLASH_REVISION_START_MS } = await import(join(SRC, 'prices.js'))
 const core = await import(join(CLIENT_SRC, 'core.js'))
 
 if (normalizeModelId('openai/gpt-5@2025[1m]') !== 'gpt-5-2025') throw new Error('normalizeModelId 失败')
@@ -302,24 +344,135 @@ const onlyLeftover = await core.computeSessionCost(
   [{ kind: 'assistant', time: OP, timing: { completedTime: OP }, requestConfig: { model: 'deepseek-v4-flash' } }],
   { uncached: 0, read: 1000, write: 0, out: 0 }, 'cny')
 if (!onlyLeftover.ok || Math.abs(onlyLeftover.cost.total - (1000 * 0.05) / 1e6) > 1e-9) throw new Error('无样本兜底失败: ' + JSON.stringify(onlyLeftover))
-// node half：完整逐步记录投影（host 端点用），只收带 usage 的 assistant 消息
+// ---- node half 成本引擎（纯函数） ----
 const hostHalf = await import(join(SRC, 'index.js'))
-const projected = hostHalf.stepsFromEvents([
-  { type: 'user/message', time: 1, data: {} },
-  { type: 'assistant/message', time: PK, data: { message: { source: { model: 'deepseek-v4-flash' } }, usage: { inputTokens: 1000, outputTokens: 500, cacheReadTokens: 2000 } } },
-  { type: 'assistant/message', time: Date.UTC(2026, 8, 10, 6), data: { message: { source: { model: 'deepseek-flash' } }, usage: { inputTokens: 1000, outputTokens: 500, cacheReadTokens: 2000 } } },
-  { type: 'assistant/message', time: 5, data: {} },
-  { type: 'tool/result', time: 6, data: { usage: { outputTokens: 99 } } },
-])
+const events = [
+  { type: 'user/message', seq: 0, time: 1, data: {} },
+  { type: 'assistant/message', seq: 1, time: PK, data: { message: { source: { model: 'deepseek-v4-flash' } }, usage: { inputTokens: 1000, outputTokens: 500, cacheReadTokens: 2000 } } },
+  { type: 'assistant/message', seq: 2, time: Date.UTC(2026, 8, 10, 6), data: { message: { source: { model: 'deepseek-flash' } }, usage: { inputTokens: 1000, outputTokens: 500, cacheReadTokens: 2000 } } },
+  { type: 'assistant/message', seq: 3, time: 5, data: {} },
+  { type: 'tool/result', seq: 4, time: 6, data: { usage: { outputTokens: 99 } } },
+]
+const projected = hostHalf.stepsFromEvents(events)
 if (projected.length !== 2) throw new Error('stepsFromEvents 应只收带 usage 的 assistant 消息')
-if (projected[0].model !== 'deepseek-v4-flash' || projected[0].read !== 2000 || projected[0].write !== 0) throw new Error('stepsFromEvents 字段失败')
-if (projected[1].model !== 'deepseek-flash' || projected[1].time !== Date.UTC(2026, 8, 10, 6)) throw new Error('stepsFromEvents 第二行失败')
-// host 路径：按完整逐步记录计价，来源标 host；与节点路径结果一致
-const hostCost = await core.computeSessionCost([], { uncached: 2000, read: 4000, write: 0, out: 1000 }, 'cny', projected)
-const hostExpect = (2000 * 0.1 + 1000 * 3 + 500 * 9) / 1e6 + (2000 * 0.04 + 1000 * 2 + 500 * 8) / 1e6
-if (!hostCost.ok || hostCost.source !== 'host') throw new Error('host 计价来源标记失败: ' + JSON.stringify(hostCost))
-if (Math.abs(hostCost.cost.total - hostExpect) > 1e-9) throw new Error('host 计价失败: ' + JSON.stringify(hostCost))
-if (cost.source !== 'session') throw new Error('节点路径来源标记失败')
+if (projected[0].seq !== 1 || projected[0].read !== 2000 || projected[0].write !== 0) throw new Error('stepsFromEvents 字段失败')
+if (projected[1].model !== 'deepseek-flash' || projected[1].seq !== 2) throw new Error('stepsFromEvents 第二行失败')
+// 单步计价：峰价 CNY 0.1/3/9 与 USD 0.014/0.44/1.32
+const stepOne = hostHalf.costOfStep(projected[0])
+const stepOneCny = (2000 * 0.1 + 1000 * 3 + 500 * 9) / 1e6
+const stepOneUsd = (2000 * 0.014 + 1000 * 0.44 + 500 * 1.32) / 1e6
+if (Math.abs(stepOne.cny.total - stepOneCny) > 1e-12) throw new Error('costOfStep CNY 失败')
+if (Math.abs(stepOne.usd.total - stepOneUsd) > 1e-12) throw new Error('costOfStep USD 失败')
+if (hostHalf.costOfStep({ seq: 9, time: PK, model: 'gpt-5', uncached: 1, read: 0, write: 0, out: 0 }) !== null) throw new Error('未知模型应计为无价')
+// 启动完整回填：没有成本记录的会话全量计价（两币种累计 + 两步待写）
+const backfilled = hostHalf.entryFromEvents('sess-a', { version: 3 }, events)
+const bothStepsCny = stepOneCny + (2000 * 0.04 + 1000 * 2 + 500 * 8) / 1e6
+if (backfilled.steps !== 2 || backfilled.pending.length !== 2 || backfilled.seq !== 2) throw new Error('回填步数/待写失败')
+if (Math.abs(backfilled.totals.cny.total - bothStepsCny) > 1e-12) throw new Error('回填累计失败: ' + JSON.stringify(backfilled.totals.cny))
+if (backfilled.pending[0].priceVersion !== PRICE_VERSION) throw new Error('成本事件应带当前价格版本')
+if (backfilled.pending[1].cumulative.cny.total !== backfilled.totals.cny.total) throw new Error('待写事件应带至当步累计')
+// 已有基线：只补基线之后的新步（不重复计价）
+const withBaseline = events.concat([{ type: 'simple-dock/cost', seq: 5, time: 100, data: backfilled.pending[1] }])
+const reused = hostHalf.entryFromEvents('sess-a', { version: 3 }, withBaseline)
+if (reused.steps !== 2 || reused.pending.length !== 0) throw new Error('基线复用失败: ' + JSON.stringify(reused))
+// 价格版本不符：丢弃旧记录并全量重算
+const stale = events.concat([{ type: 'simple-dock/cost', seq: 5, time: 100, data: Object.assign({}, backfilled.pending[1], { priceVersion: 0 }) }])
+if (hostHalf.entryFromEvents('sess-a', { version: 3 }, stale).pending.length !== 2) throw new Error('价格版本失效失败')
+// 运行期增量：新步累加 + 入待写；同一步不重复计价
+const liveEvent = { type: 'assistant/message', seq: 6, time: OP, data: { message: { source: { model: 'deepseek-v4-flash' } }, usage: { inputTokens: 1000, outputTokens: 500, cacheReadTokens: 2000 } } }
+const liveStep = hostHalf.stepsFromEvents([liveEvent])[0]
+if (!hostHalf.applyLiveStep(reused, liveStep)) throw new Error('增量应用失败')
+if (reused.steps !== 3 || reused.pending.length !== 1) throw new Error('增量累计失败')
+if (hostHalf.applyLiveStep(reused, liveStep)) throw new Error('重复步不应再次计价')
+// 子任务合并：父会话视图含后代
+const entriesMap = new Map()
+entriesMap.set('parent', hostHalf.entryFromEvents('parent', { version: 3 }, events))
+entriesMap.set('child', hostHalf.entryFromEvents('child', { version: 3, parentSession: 'parent' }, events))
+entriesMap.set('other', hostHalf.entryFromEvents('other', { version: 3 }, events))
+const merged = hostHalf.mergeLineage(entriesMap, 'parent')
+if (merged.steps !== 4 || merged.subagents.sessions !== 1) throw new Error('父子合并失败: ' + JSON.stringify(merged))
+if (Math.abs(merged.totals.cny.total - 2 * backfilled.totals.cny.total) > 1e-12) throw new Error('合并金额失败')
+
+// ---- node half 桩上下文：预热回填 / 活动会话延后 / 端点分支 ----
+const makeCtx = (state) => ({
+  // 桩：依赖服务视为已就绪，注入回调立即执行（并展开为 ctx 属性）。
+  inject(services, callback) { state.injections.push({ services }); callback(makeCtx(state)); return () => {} },
+  effect(fn) { state.effects.push(fn()); return () => {} },
+  on(event, handler) {
+    const list = state.listeners.get(event) ?? []
+    list.push(handler)
+    state.listeners.set(event, list)
+    return () => {}
+  },
+  get(name) { return state.services[name] },
+  // Cordis 把注入的服务暴露为 ctx 属性；桩按当前服务表展开。
+  ...state.services,
+})
+const state = { injections: [], effects: [], listeners: new Map(), routes: [], services: {} }
+const logs = new Map()
+const active = new Set(['sess-live'])
+const writes = []
+state.services.settings = { register: () => {} }
+state.services.sessionPersistence = {
+  list: async () => [
+    { header: { id: 'sess-a', version: 3 } },
+    { header: { id: 'sess-live', version: 3 } },
+  ],
+  stat: async (id) => (logs.has(id) ? { header: { id, version: 3 } } : undefined),
+  open: async (id, access) => {
+    if (access === 'write' && active.has(id)) throw new Error('session already owned')
+    return {
+      read: async () => ({ events: logs.get(id) ?? [] }),
+      append: async (batch) => {
+        writes.push({ id, batch })
+        const list = logs.get(id) ?? []
+        logs.set(id, list.concat(batch))
+      },
+      flush: async () => {},
+      close: async () => {},
+    }
+  },
+}
+state.services.webServer = { register: (route) => { state.routes.push(route); return () => {} } }
+logs.set('sess-a', events)
+logs.set('sess-live', events.slice(0, 2))
+const rootCtx = makeCtx(state)
+hostHalf.apply(rootCtx)
+const flushAsync = async () => { for (let i = 0; i < 30; i += 1) await new Promise((resolve) => setImmediate(resolve)) }
+await flushAsync()
+// 回填写回：sess-a 两步各一条可忽略事件、seq 连续
+const sessAWrite = writes.find((w) => w.id === 'sess-a')
+if (sessAWrite === undefined || sessAWrite.batch.length !== 2) throw new Error('启动回填未写回日志')
+if (sessAWrite.batch[0].type !== 'simple-dock/cost' || sessAWrite.batch[0].ignorable !== true) throw new Error('成本事件类型/可忽略标记失败')
+if (sessAWrite.batch[0].seq !== 5 || sessAWrite.batch[1].seq !== 6) throw new Error('成本事件 seq 应接续日志: ' + JSON.stringify(sessAWrite.batch.map((e) => e.seq)))
+if (writes.some((w) => w.id === 'sess-live')) throw new Error('活动会话不应写入日志')
+// 端点：正常 200、缺少参数 400、非 GET 403、未知会话 404
+if (state.routes.length !== 1) throw new Error('未注册 cost 端点')
+const callRoute = async (method, url, origin) => {
+  let status = 0
+  let body = ''
+  const res = { writeHead: (code) => { status = code; return res }, end: (text) => { body = text ?? '' } }
+  await state.routes[0].handler({ method, url, headers: { host: '127.0.0.1:3080', ...(origin === undefined ? {} : { origin }) } }, res)
+  return { status, body }
+}
+const okCall = await callRoute('GET', '/dsh-simple-dock/api/cost?sessionId=sess-a')
+const okBody = JSON.parse(okCall.body)
+if (okCall.status !== 200 || okBody.ok !== true || okBody.steps !== 2) throw new Error('端点应与内存缓存一致: ' + okCall.body)
+if (Math.abs(okBody.totals.cny.total - bothStepsCny) > 1e-12) throw new Error('端点金额失败: ' + okCall.body)
+if ((await callRoute('GET', '/dsh-simple-dock/api/cost')).status !== 400) throw new Error('缺 sessionId 应 400')
+if ((await callRoute('POST', '/dsh-simple-dock/api/cost?sessionId=sess-a')).status !== 403) throw new Error('非 GET 应 403')
+if ((await callRoute('GET', '/dsh-simple-dock/api/cost?sessionId=ghost')).status !== 404) throw new Error('未知会话应 404')
+if ((await callRoute('GET', '/dsh-simple-dock/api/cost?sessionId=sess-a', 'http://evil.example')).status !== 403) throw new Error('跨源应 403')
+// 运行期事件 → 会话离场后补写
+const liveEvent2 = { type: 'assistant/message', seq: 2, time: OP, data: { message: { source: { model: 'deepseek-v4-flash' } }, usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 20 } } }
+for (const handler of state.listeners.get('session/event') ?? []) handler({ id: 'sess-live' }, liveEvent2)
+active.delete('sess-live')
+for (const handler of state.listeners.get('session/disposed') ?? []) handler({ id: 'sess-live' })
+await flushAsync()
+const liveWrite = writes.find((w) => w.id === 'sess-live')
+if (liveWrite === undefined || liveWrite.batch.length !== 2) throw new Error('离场后应补写全部未落盘步')
+if (liveWrite.batch[0].ignorable !== true || liveWrite.batch[1].seq !== liveWrite.batch[0].seq + 1) throw new Error('增量补写事件格式失败')
+
 const model = core.currentModel([{ kind: 'user' }, { kind: 'assistant', provenance: { model: 'deepseek-v4-flash' } }])
 if (model !== 'deepseek-v4-flash') throw new Error('currentModel 失败')
-console.log('smoke OK（i18n/归一化/峰谷取价/格式化/折叠/按步成本管线/差额兜底/host 逐步记录/未知模型）')
+console.log('smoke OK（i18n/归一化/峰谷取价/格式化/折叠/按步成本管线/差额兜底/成本引擎回填/增量/合并/端点/未知模型）')
