@@ -112,6 +112,49 @@ export function applyGlassVars() {
   style.setProperty('--dsh-dstat-frost', String(Math.min(frostPref.get() / 50, 1.4)))
 }
 
+// ---- 完整逐步记录（host 端点） ----
+// 页面上的会话节点只是当前视图窗口内的行，逐点取价会随窗口裁剪漂移。
+// host half 用 DSH 自己的会话持久化读出该会话的完整逐步用量，这里取回后
+// 即可精确计价；端点不可用时（非 web 环境/旧版 host）回退到节点路径。
+const HOST_STEPS_ROUTE = '/dsh-simple-dock/api/steps'
+
+/** 取某会话的完整逐步用量；不可用或失败返回 null（调用方回退节点路径）。 */
+export async function fetchHostSteps(sessionId) {
+  if (typeof sessionId !== 'string' || sessionId === '') return null
+  if (typeof fetch !== 'function') return null
+  try {
+    const response = await fetch(
+      `${HOST_STEPS_ROUTE}?sessionId=${encodeURIComponent(sessionId)}`,
+      { headers: {} },
+    )
+    if (!response.ok) return null
+    const body = await response.json()
+    if (body === null || typeof body !== 'object' || body.ok !== true || !Array.isArray(body.steps)) return null
+    return body.steps
+  } catch (e) {
+    return null
+  }
+}
+
+/** host 步骤行 → 与 stepCosts 相同的 { at, model, usage } 形状。 */
+function hostRows(steps) {
+  const rows = []
+  for (const step of steps) {
+    if (step === null || typeof step !== 'object') continue
+    rows.push({
+      at: typeof step.time === 'number' ? step.time : null,
+      model: typeof step.model === 'string' && step.model !== '' ? step.model : null,
+      usage: {
+        uncached: num(step.uncached) ?? 0,
+        out: num(step.out) ?? 0,
+        read: num(step.read) ?? 0,
+        write: num(step.write) ?? 0,
+      },
+    })
+  }
+  return rows
+}
+
 // ---- 预估成本：按每次消耗的精确时间与模型取价（本地计算） ----
 // 数据来源：会话快照 assistant 节点。每步带 timing.completedTime
 // （Unix epoch ms，精确到毫秒）、该步 usage（input/output/cacheRead/
@@ -164,12 +207,15 @@ export function currentModel(nodes) {
   return null
 }
 
-// 计算某会话的预估成本：{ ok, currency, model, cost, skipped }。
+// 计算某会话的预估成本：{ ok, currency, model, cost, skipped, source }。
 // nodes = 会话快照节点（时间 + 每步模型 + 每步用量）；usage = readUsage()
 // 投影聚合（兜底差额）。每步按其消耗时刻取峰/谷价累加。
-export async function computeSessionCost(nodes, usage, currencyCode) {
+// hostSteps = host 端点给出的完整逐步用量；有它时以它为准（不受视图窗口
+// 影响），source 标为 'host'，否则用节点路径（'session'）。
+export async function computeSessionCost(nodes, usage, currencyCode, hostSteps) {
   const fallbackModel = currentModel(nodes) || 'deepseek-flash'
-  const rows = stepCosts(nodes)
+  const useHost = Array.isArray(hostSteps) && hostSteps.length > 0
+  const rows = useHost ? hostRows(hostSteps) : stepCosts(nodes)
   const priced = { uncached: 0, out: 0, read: 0, write: 0 }
   let total = { hit: 0, miss: 0, out: 0, total: 0 }
   let lastAt = null
@@ -253,14 +299,22 @@ export async function computeSessionCost(nodes, usage, currencyCode) {
     cost: total,
     skipped,
     skippedModel,
+    source: useHost ? 'host' : 'session',
   }
+}
+
+// 计价入口：先向 host 取该会话的完整逐步用量（精确、不随视图窗口变化），
+// 端点不可用时回退到页面节点路径。
+export async function computeSessionCostFor(sessionId, nodes, usage, currencyCode) {
+  const hostSteps = await fetchHostSteps(sessionId)
+  return computeSessionCost(nodes, usage, currencyCode, hostSteps)
 }
 
 // ---- 预估成本缓存：按会话持久化（localStorage）。打开面板先显示缓存、
 // 后台更新后替换；插件运行期间后台每小时刷新一次。 ----
 // 缓存带 PRICE_VERSION：内置价格表升级后旧条目自动失效（版本不符视为无缓存）。
 const COST_CACHE_PREFIX = 'dsh.dstat.cost.'
-export const PRICE_VERSION = 8
+export const PRICE_VERSION = 9
 
 export function readCostCache(sessionId) {
   try {

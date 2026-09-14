@@ -131,8 +131,8 @@ New-Item -ItemType Junction -Path "C:\path\to\simple-dock\node_modules\@deepseek
 - **flash 新价**：2026-09-10 12:00（北京时间）起 flash 系列（主 id `deepseek-flash`）改用新价目：谷 = 缓存命中 0.02 / 未命中 1 / 输出 4 元（USD 0.003 / 0.15 / 0.6），峰 = 谷 × 2；周末规则不变；v4-pro 不受影响
 - **deepseek-chat / deepseek-reasoner**：自动按 flash 的旧统一价计价（不参与峰谷）
 - **flash 系列 id**：主 id 为 `deepseek-flash`；2026-09-10 12:00（北京时间）起 `deepseek-v4-flash`、`deepseek-v4-flash-vision-exp` 都是它的别称，一律引用 flash 价目（含峰谷、周末与 9/10 新价）
-- 每次推理请求都会读取它的完成时刻（精确到毫秒）与该步所用模型，峰/谷价互不串算
-- 节点明细缺失的用量（会话窗口截断）按**已计价部分的平均单价**补算，不会整体套用最新价目
+- 每次推理请求都会读取它的完成时刻与该步所用模型，峰/谷价互不串算
+- **数据来源**：优先由 node half 通过同源只读端点 `/dsh-simple-dock/api/steps` 读出该会话在 DSH 会话记录里的**完整逐步用量**（不受页面加载范围影响），面板标注「完整记录」；端点不可用时回退为页面当前可见的步，标注「当前可见步（估算）」，其缺口按已计价部分的平均单价补算，不整体套用最新价目
 - 其他不在内置表中的模型不显示预估费用
 
 ## 与 DSH-Transparent-UI-Plugin（Aqua 透明玻璃主题）并用

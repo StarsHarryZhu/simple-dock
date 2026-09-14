@@ -95,14 +95,25 @@ const nodeHalf = read(join(SRC, 'index.js'))
 writeFileSync(join(LIB, 'index.js'), nodeHalf)
 
 // 手写类型声明（JS 包的最小契约）。
-writeFileSync(join(LIB, 'types', 'index.d.ts'), `/** Simple Dock node half: registers the simple-dock settings namespace. */
+writeFileSync(join(LIB, 'types', 'index.d.ts'), `/** Simple Dock node half: settings namespace + same-origin step endpoint. */
 import type { Context } from '@deepseek-ai/cordis';
-/** Register the namespace once the optional settings service is composed. */
+/** One per-step usage row served to the client cost engine. */
+export interface StepUsageRow {
+  readonly time: number | null;
+  readonly model: string | null;
+  readonly uncached: number;
+  readonly read: number;
+  readonly write: number;
+  readonly out: number;
+}
+/** Project stored session events onto per-step usage rows. */
+export declare function stepsFromEvents(events: readonly unknown[]): StepUsageRow[];
+/** Register the settings namespace and (when composed) the steps endpoint. */
 export declare function apply(ctx: Context): void;
 `)
 writeFileSync(join(LIB, 'types', 'client', 'index.d.ts'), `/** Simple Dock client plugin body. */
 import type { Context } from '@deepseek-ai/cordis';
-/** Required services: the slot registry. */
+/** Required services: the slot registry plus the locale runtime. */
 export declare const inject: string[];
 export declare function apply(ctx: Context): void;
 `)
@@ -291,6 +302,24 @@ const onlyLeftover = await core.computeSessionCost(
   [{ kind: 'assistant', time: OP, timing: { completedTime: OP }, requestConfig: { model: 'deepseek-v4-flash' } }],
   { uncached: 0, read: 1000, write: 0, out: 0 }, 'cny')
 if (!onlyLeftover.ok || Math.abs(onlyLeftover.cost.total - (1000 * 0.05) / 1e6) > 1e-9) throw new Error('无样本兜底失败: ' + JSON.stringify(onlyLeftover))
+// node half：完整逐步记录投影（host 端点用），只收带 usage 的 assistant 消息
+const hostHalf = await import(join(SRC, 'index.js'))
+const projected = hostHalf.stepsFromEvents([
+  { type: 'user/message', time: 1, data: {} },
+  { type: 'assistant/message', time: PK, data: { message: { source: { model: 'deepseek-v4-flash' } }, usage: { inputTokens: 1000, outputTokens: 500, cacheReadTokens: 2000 } } },
+  { type: 'assistant/message', time: Date.UTC(2026, 8, 10, 6), data: { message: { source: { model: 'deepseek-flash' } }, usage: { inputTokens: 1000, outputTokens: 500, cacheReadTokens: 2000 } } },
+  { type: 'assistant/message', time: 5, data: {} },
+  { type: 'tool/result', time: 6, data: { usage: { outputTokens: 99 } } },
+])
+if (projected.length !== 2) throw new Error('stepsFromEvents 应只收带 usage 的 assistant 消息')
+if (projected[0].model !== 'deepseek-v4-flash' || projected[0].read !== 2000 || projected[0].write !== 0) throw new Error('stepsFromEvents 字段失败')
+if (projected[1].model !== 'deepseek-flash' || projected[1].time !== Date.UTC(2026, 8, 10, 6)) throw new Error('stepsFromEvents 第二行失败')
+// host 路径：按完整逐步记录计价，来源标 host；与节点路径结果一致
+const hostCost = await core.computeSessionCost([], { uncached: 2000, read: 4000, write: 0, out: 1000 }, 'cny', projected)
+const hostExpect = (2000 * 0.1 + 1000 * 3 + 500 * 9) / 1e6 + (2000 * 0.04 + 1000 * 2 + 500 * 8) / 1e6
+if (!hostCost.ok || hostCost.source !== 'host') throw new Error('host 计价来源标记失败: ' + JSON.stringify(hostCost))
+if (Math.abs(hostCost.cost.total - hostExpect) > 1e-9) throw new Error('host 计价失败: ' + JSON.stringify(hostCost))
+if (cost.source !== 'session') throw new Error('节点路径来源标记失败')
 const model = core.currentModel([{ kind: 'user' }, { kind: 'assistant', provenance: { model: 'deepseek-v4-flash' } }])
 if (model !== 'deepseek-v4-flash') throw new Error('currentModel 失败')
-console.log('smoke OK（i18n/归一化/峰谷取价/格式化/折叠/按步成本管线/差额兜底/未知模型）')
+console.log('smoke OK（i18n/归一化/峰谷取价/格式化/折叠/按步成本管线/差额兜底/host 逐步记录/未知模型）')

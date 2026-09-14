@@ -6,7 +6,7 @@ import {
   getCurrency, setCurrency, subscribeCurrency,
   getBlurPref, getFrostPref, setBlurPref, setFrostPref, subscribeGlass,
   readCostCache, writeCostCache, scheduleInterval,
-  computeSessionCost,
+  computeSessionCostFor,
   num, fmtExact, fmtDuration, fmtTps, fmtCost, formatClock,
   foldStats, stepReading, readUsage,
 } from './core.js'
@@ -156,7 +156,7 @@ export function StatsDock(props) {
     } else {
       setCostState((s) => ({ ...s, loading: true }))
     }
-    computeSessionCost(nodes, usage, currency)
+    computeSessionCostFor(sessionId, nodes, usage, currency)
       .then((res) => {
         if (!alive || !res) return
         if (res.ok === true) {
@@ -177,7 +177,7 @@ export function StatsDock(props) {
   React.useEffect(() => {
     if (sessionId === undefined || usage === null) return
     const refresh = () => {
-      computeSessionCost(nodes, usage, currency)
+      computeSessionCostFor(sessionId, nodes, usage, currency)
         .then((res) => { if (res && res.ok === true) writeCostCache(sessionId, res) })
         .catch(() => { /* 后台失败静默，下小时重试 */ })
     }
@@ -189,7 +189,10 @@ export function StatsDock(props) {
   const costLine = (() => {
     const data = costState.data
     if (data && data.ok === true) {
-      return { value: fmtCost(data.cost.total, data.currency), sub: '' }
+      return {
+        value: fmtCost(data.cost.total, data.currency),
+        sub: data.source === 'host' ? t('cost.source.host') : t('cost.source.session'),
+      }
     }
     if (data && data.ok === false) {
       const msg = data.error || ''

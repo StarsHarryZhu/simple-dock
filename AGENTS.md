@@ -7,9 +7,13 @@ token / estimated-cost panels.
 
 ## What this package is
 
-- **Bundle type**: UI plugin with a thin node half. The node half only
-  registers the `simple-dock` settings namespace (the browser card is keyed
-  by it); every feature runs in the browser.
+- **Bundle type**: UI plugin with a thin node half. The node half registers the
+  `simple-dock` settings namespace (the browser card is keyed by it) and serves
+  one same-origin, read-only endpoint, `/dsh-simple-dock/api/steps`, returning
+  a session's per-step usage read through the Host's own `sessionPersistence`.
+  The browser half prices costs from that complete log; the endpoint exists
+  because the Client's conversation nodes are only the rows its window has
+  loaded, so pricing history from nodes alone drifted with the visible range.
 - **Registration**: `dsh.client` declaration in `package.json` + one insert
   row in the web profile's `cordis.patch.yml`. No approval flow: bundles load
   automatically once the composition includes them.
@@ -19,12 +23,14 @@ token / estimated-cost panels.
   roster row (dsh-client-locale) can apply after this plugin, and a bare
   `ctx.get('locale')` at apply time would then miss it and leave every label
   on the raw-key fallback. The node half imports only
-  `@deepseek-ai/schemastery` (the empty schema) and registers the namespace
-  through the injected `settings` service (no value import of dsh-settings
-  needed); schemastery must resolve from the package's local `node_modules`
-  when installed manually via symlink (see Install). Everything else (token
-  usage projection, model from session nodes, built-in price table with
-  peak/off-peak tiers) is client-side and never fetches the network.
+  `@deepseek-ai/schemastery` and progressively injects the optional `settings`
+  (namespace registration), and `webServer` + `sessionPersistence` (the steps
+  endpoint) services — no value import of dsh-settings is needed, and no
+  endpoint is registered where `webServer` is absent; schemastery must resolve
+  from the package's local `node_modules` when installed manually via symlink
+  (see Install). Everything else (token usage projection, model from session
+  nodes, built-in price table with peak/off-peak tiers) is client-side and
+  never fetches an external price table.
 
 ## Install
 
@@ -97,6 +103,19 @@ new bundle rows. After restart, the dynamic per-session copy of this plugin
    `设置 → 通用设置` shows the four rows (底栏面板样式 / 价格表 /
    成本计价币种 / 面板玻璃). Check the browser console for
    `client-modules` load errors if anything is missing.
+4. Steps endpoint (web profile only): the cost line carries the
+   `完整记录` / "full log" marker when the browser half priced the complete
+   log. The endpoint itself answers per-step rows for a stored session:
+
+   ```sh
+   curl -s "http://127.0.0.1:3080/dsh-simple-dock/api/steps?sessionId=<session-id>"
+   ```
+
+   → `{"ok":true,"steps":[{"time":…,"model":…,"uncached":…,"read":…,"write":…,"out":…}]}`.
+   A `401` means the web session is not authenticated, `403` an off-origin
+   caller, `404 {ok:false,"reason":"session-unreadable"}` an unknown session —
+   none of those is a plugin defect, and each one makes the browser half fall
+   back to its node path.
 
 ## Uninstall
 
@@ -120,13 +139,14 @@ Build-time checks: syntax + smoke tests (zh/en dictionary key parity,
 model normalization, peak/off-peak price lookup with the 2026-08-17
 effective date and UTC peak-hour boundaries, the 2026-08-23 Beijing-time
 weekend all-day off-peak rule, per-step cost pipeline priced at each step's
-completion time, unknown-model branch). Do not edit `lib/` by hand — it is
-generated.
+completion time, the averaged leftover fallback, the node-half step
+projection and the host-priced path, unknown-model branch). Do not edit
+`lib/` by hand — it is generated.
 
 ## Layout
 
 ```
-src/index.js        node half (registers the simple-dock settings namespace)
+src/index.js        node half (settings namespace + /dsh-simple-dock/api/steps)
 src/client/         i18n.js · prices.js · core.js · components.js · index.js · styles.css
 lib/                built outputs (committed for git installs)
 build.js            the bundler
@@ -144,9 +164,14 @@ assets/ demo/       screenshots and recordings
 
 ## Notes
 
-- Keep the node half minimal: it registers the `simple-dock` settings
-  namespace (an empty schema — the card stores its state in localStorage) and
-  nothing else. No host behavior, no network; do not grow it.
+- Keep the node half small and read-only: it registers the `simple-dock`
+  settings namespace (an empty schema — the card stores its state in
+  localStorage) and serves the same-origin steps endpoint through
+  `sessionPersistence`. It must never write session data, never reach the
+  network, and never return message text — only per-step token counts, times
+  and model ids. No endpoint is registered when `webServer` is absent, and a
+  read failure answers `{ ok: false }` so the browser half falls back to its
+  own node path.
 - The settings plugin card and general rows are plain slot registrations
   (`settings.plugin.item` key `simple-dock` — keyed slots dispatch by the
   served namespace, not an id — `settings.general.item` ids `dstat-*`,
