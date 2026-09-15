@@ -116,14 +116,14 @@ new bundle rows. After restart, the dynamic per-session copy of this plugin
    A `401` means the web session is not authenticated, `403` an off-origin
    caller, `404 {ok:false,"reason":"session-unreadable"}` an unknown session —
    none of those is a plugin defect, and each one makes the browser half fall
-   back to its own node path. At startup the log line
-   `[simple-dock] cost warm-up done: …` reports how many sessions were priced.
+   back to its own node path. Warm-up is silent on success (only failures log);
+   check that a session's cost is served, not that a line was printed.
 5. Persistence check: after a step completes (or after a restart backfills an
    old session), the session log carries one `simple-dock/cost` event per
    assistant step:
 
    ```sh
-   zstd -dc "$DSH_HOME/sessions/<encoded-cwd>/<session-dir>/session.v2.jsonl.zstd" | grep -c simple-dock/cost
+   zstd -dc "$DSH_HOME/sessions/<encoded-cwd>/<session-dir>/session.v3.jsonl.zstd" | grep -c simple-dock/cost
    ```
 
    Each event must be `ignorable: true` with a contiguous `seq`, and the
@@ -195,9 +195,12 @@ assets/ demo/       screenshots and recordings
   failure degrades silently (endpoint `{ ok:false }`, browser half falls back
   to its own node path).
 - Startup warm-up prices every stored session with `WARM_CONCURRENCY` workers
-  and logs one `cost warm-up done` line; a session with no usable cost record
-  (absent, or written under a different `PRICE_VERSION`) is fully re-priced and
-  written back, which is the fresh-install backfill path.
+  and stays silent on success (only failures reach `console.error`); a session
+  with a usable cost record is reused as its baseline — only later steps are
+  priced, and none at all when the record already covers the log — while a
+  session with no usable record (absent, or written under a different
+  `PRICE_VERSION`) is fully re-priced and written back, which is the
+  fresh-install backfill path.
 - The settings plugin card and general rows are plain slot registrations
   (`settings.plugin.item` key `simple-dock` — keyed slots dispatch by the
   served namespace, not an id — `settings.general.item` ids `dstat-*`,
