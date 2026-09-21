@@ -218,15 +218,21 @@ assets/ demo/       screenshots and recordings
 - The General master switch row must render **while the dock is disabled** (it
   is the only way back); the other four rows keep returning null when disabled,
   like the panels.
-- Dock layout: `.dsstat-root` is `flex: 1 1 auto` inside the official `.dock`
-  row (the official context meter follows it in the same row), with
-  `justify-content: space-between` giving `步数` the left edge and `命中率` the
-  right edge. The context capsule is styled through the **adjacent sibling**
-  `.dsstat-root + *` (slot entries add no wrapper DOM), with a
-  `div:has(> .dsstat-root) > *:last-child` fallback in case upstream inserts
-  one; those rules are cosmetic only and must not touch the official meter's
-  click-open dialog. The `assets/thumbs/*` screenshots in the README predate
-  this row layout — re-shoot them when the row changes.
+- Dock layout: the slot outlet wraps every entry in a layout-neutral
+  `[data-slot="conversation.composer.dock"]` anchor (`display: contents`), so
+  `.dsstat-root` is itself a flex item of the official `.dock` row and its
+  `flex: 1 1 auto` + `justify-content: space-between` put `步数` on the far left
+  and `命中率` on the right, with the official context meter following in the
+  same row. The context capsule is styled through that anchor's adjacent
+  sibling — `[data-slot="conversation.composer.dock"] + *`, with
+  `:has(.dsstat-glass)` / `:not(:has(…))` choosing glass vs solid — and
+  `.dsstat-root + *` stays as the no-anchor fallback. Never target
+  `div:has(> .dsstat-root) > *:last-child`: the outlet wrapper matches it and
+  its last child is `.dsstat-root` itself, so the capsule styling would land on
+  our own row (the build smoke rejects that selector). Those rules are cosmetic
+  only and must not touch the official meter's click-open dialog. The
+  `assets/thumbs/*` screenshots in the README predate this row layout — re-shoot
+  them when the row changes.
 - The card component serves both owners: `plugins.bundle.config` asks for a
   `summary` one-liner and a `page` body (`view` prop), the settings tab renders
   the body without a `view`.

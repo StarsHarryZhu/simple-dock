@@ -231,11 +231,18 @@ export declare function apply(ctx: Context): void;
   if (!/\.dsstat-root\s*\{[\s\S]*?flex:\s*1 1 auto/.test(cssText)) {
     throw new Error('.dsstat-root 需 flex:1 1 auto 与官方底栏同行（左步数 / 右命中率）')
   }
-  if (!cssText.includes('.dsstat-root.dsstat-glass + *')) {
-    throw new Error('缺少官方上下文指示器的玻璃化规则（.dsstat-root.dsstat-glass + *）')
+  if (!cssText.includes('[data-slot="conversation.composer.dock"] + *')) {
+    throw new Error('缺少官方上下文指示器的玻璃化规则（[data-slot="conversation.composer.dock"] + *）')
   }
-  if (!cssText.includes('.dsstat-root:not(.dsstat-glass) + *')) {
+  if (!cssText.includes('[data-slot="conversation.composer.dock"]:has(.dsstat-glass) + *')) {
+    throw new Error('缺少上下文指示器的半透明（玻璃）规则')
+  }
+  if (!cssText.includes('[data-slot="conversation.composer.dock"]:not(:has(.dsstat-glass)) + *')) {
     throw new Error('缺少上下文指示器的传统（实底）规则')
+  }
+  if (cssText.includes('div:has(> .dsstat-root)')) {
+    throw new Error('不要用 div:has(> .dsstat-root)：outlet wrapper 是 display:contents，'
+      + '它的 *:last-child 就是我们自己的 .dsstat-root，会把胶囊样式打到坞自己身上')
   }
 }
 console.log('lib/client.js :', Buffer.byteLength(clientBundle), 'bytes')
