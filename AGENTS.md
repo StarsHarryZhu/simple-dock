@@ -101,15 +101,18 @@ new bundle rows. After restart, the dynamic per-session copy of this plugin
    ```
 
    → prints `function`.
-3. After restart, in the web UI: the dock row is **`步数 N` on the far left,
-   `命中率 X%` on the right**, followed by DSH's own context indicator whose
-   capsule background follows this plugin's panel style / glass sliders;
-   the on/off switch appears in `设置 → 通用设置` (first row), in
-   `设置 → 插件` (a **Simple Dock** tab) and on the sidebar **Plugins** page as
-   this bundle's configuration — toggling it must swap the official stats line
-   in and out **without a refresh**. `设置 → 通用设置` shows five rows
-   (底栏统计坞 / 底栏面板样式 / 价格表 / 成本计价币种 / 面板玻璃). Check the
-   browser console for `client-modules` load errors if anything is missing.
+3. After restart, in the web UI: the dock row has three buttons — **`步数 N` on
+   the far left, `命中率 X%` and `上下文 Y%` on the right** — all with no arrow
+   and no background while collapsed, and **at most one panel open** (another
+   button, an outside click, or Esc closes it). DSH's own context meter must be
+   hidden while this plugin owns the row (we render that data ourselves); it
+   reappears while the plugin is disabled. The on/off switch appears in
+   `设置 → 通用设置` (first row), in `设置 → 插件` (a **Simple Dock** tab) and on
+   the sidebar **Plugins** page as this bundle's configuration — toggling it
+   must swap the official stats line in and out **without a refresh**.
+   `设置 → 通用设置` shows six rows (底栏统计坞 / 底栏面板样式 / 价格表 /
+   成本计价币种 / 面板玻璃 / 背景色). Check the browser console for
+   `client-modules` load errors if anything is missing.
 4. Cost engine and endpoint (web profile only):
 
    ```sh
@@ -208,31 +211,43 @@ assets/ demo/       screenshots and recordings
 - Slot registrations are plain entries: the on/off card on both
   `settings.plugins.tab` (Settings → Plugins section, id `simple-dock`) and the
   Plugins page's keyed `plugins.bundle.config` (key = this bundle's package
-  name `dsh-ui-simple-dock`), five rows on `settings.general.item`
+  name `dsh-ui-simple-dock`), six rows on `settings.general.item`
   (`dstat-enabled` first — the master switch — then `dstat-mode`,
-  `dstat-pricing`, `dstat-currency`, `dstat-glass`), and the composer dock on
+  `dstat-pricing`, `dstat-currency`, `dstat-glass`, `dstat-color`), and the
+  composer dock on
   `conversation.composer.dock` (id `stats`, `priority: -1` to shadow the
   official stats line). `settings.plugin.item` no longer exists in the 0.1.6
   shell: registering into an undeclared slot throws, so a stale slot would drop
   the card silently while the rest of the plugin keeps working.
 - The General master switch row must render **while the dock is disabled** (it
-  is the only way back); the other four rows keep returning null when disabled,
+  is the only way back); the other five rows keep returning null when disabled,
   like the panels.
 - Dock layout: the slot outlet wraps every entry in a layout-neutral
   `[data-slot="conversation.composer.dock"]` anchor (`display: contents`), so
   `.dsstat-root` is itself a flex item of the official `.dock` row and its
   `flex: 1 1 auto` + `justify-content: space-between` put `步数` on the far left
-  and `命中率` on the right, with the official context meter following in the
-  same row. The context capsule is styled through that anchor's adjacent
-  sibling — `[data-slot="conversation.composer.dock"] + *`, with
-  `:has(.dsstat-glass)` / `:not(:has(…))` choosing glass vs solid — and
-  `.dsstat-root + *` stays as the no-anchor fallback. Never target
+  with `命中率` and `上下文` on the right (two visual groups). The three buttons
+  carry no arrow and no collapsed background, and a single `openPanel` state
+  keeps at most one panel open (another button, an outside pointer-down, or Esc
+  closes it).
+- **The context button is ours, not the official meter's.** The official
+  `ContextMeter` is hidden through the anchor's adjacent sibling —
+  `[data-slot="conversation.composer.dock"]:has(.dsstat-root) + * { display: none }`
+  — and we render the occupancy from the same projections (`contextPressure`
+  for `projectedTokens ?? pressureTokens` / `contextWindow`, `contextBreakdown`
+  for the system/tools/messages split) with the official percent formula. The
+  `:has(.dsstat-root)` guard means the official indicator stays visible in hero
+  / session-less states and while this plugin is disabled. Never target
   `div:has(> .dsstat-root) > *:last-child`: the outlet wrapper matches it and
-  its last child is `.dsstat-root` itself, so the capsule styling would land on
-  our own row (the build smoke rejects that selector). Those rules are cosmetic
-  only and must not touch the official meter's click-open dialog. The
-  `assets/thumbs/*` screenshots in the README predate this row layout — re-shoot
-  them when the row changes.
+  its last child is `.dsstat-root` itself, so the styling would land on our own
+  row (the build smoke rejects that selector).
+- Background color settings write `<html>` variables — `--dsh-dstat-glass-color`
+  (translucent fill, mixed with the frost knob) and `--dsh-dstat-solid-color`
+  (classic panel background) — and an empty value removes the variable so the
+  theme default applies again. `glassStyle()` reads the glass variable with the
+  theme-default fallback; `.dsstat-panel` reads the solid one with
+  `--dsw-alias-bg-base` as fallback. The `assets/thumbs/*` screenshots in the
+  README predate this row layout — re-shoot them when the row changes.
 - The card component serves both owners: `plugins.bundle.config` asks for a
   `summary` one-liner and a `page` body (`view` prop), the settings tab renders
   the body without a `view`.

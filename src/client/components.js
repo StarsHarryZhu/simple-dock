@@ -5,6 +5,7 @@ import {
   getPanelMode, setPanelMode, subscribePanelMode,
   getCurrency, setCurrency, subscribeCurrency,
   getBlurPref, getFrostPref, setBlurPref, setFrostPref, subscribeGlass,
+  getGlassColor, getSolidColor, setGlassColor, setSolidColor, subscribeColors,
   loadSessionCost,
   num, fmtExact, fmtDuration, fmtTps, fmtCost, formatClock,
   foldStats, stepReading, readUsage,
@@ -23,6 +24,26 @@ function darkTheme() {
     : false
 }
 
+// 上下文占用：与官方 ContextMeter 同一份 token-meter 投影，公式一致
+//（projectedTokens 优先，回退 pressureTokens；缺上下文窗口时不可用）。
+function contextOccupancy(pressure) {
+  if (pressure === null || pressure === undefined || typeof pressure !== 'object') return null
+  const used = typeof pressure.projectedTokens === 'number' ? pressure.projectedTokens : pressure.pressureTokens
+  const window = pressure.contextWindow
+  if (typeof used !== 'number' || typeof window !== 'number' || window <= 0) return null
+  return { percent: Math.min(100, Math.round(used / window * 100)), used, window }
+}
+
+// 上下文的系统/工具/消息分解（heuristic，官方同样标注为近似值）。
+function contextParts(breakdown) {
+  if (breakdown === null || breakdown === undefined || typeof breakdown !== 'object') return []
+  return [
+    ['system', num(breakdown.systemTokens)],
+    ['tools', num(breakdown.toolsTokens)],
+    ['messages', num(breakdown.messageTokens)],
+  ].filter(([, value]) => typeof value === 'number' && value > 0)
+}
+
 // 磨砂玻璃填充 + 模糊都走 CSS 变量，旋钮改动实时生效、无需重渲染：
 //   每块面板的 --dsstat-blur / --dsstat-frost（styles.css 中定义）直接绑定
 //   本插件「面板玻璃」滑杆（--dsh-dstat-blur / --dsh-dstat-frost）。
@@ -31,17 +52,17 @@ function glassStyle() {
     backdropFilter: 'blur(var(--dsstat-blur, 14px)) saturate(1.2)',
     WebkitBackdropFilter: 'blur(var(--dsstat-blur, 14px)) saturate(1.2)',
   }
-  if (darkTheme()) {
-    return {
-      ...base,
-      backgroundColor: 'color-mix(in srgb, rgb(42 46 56) calc(50% * var(--dsstat-frost, 1)), transparent)',
-      backgroundImage: 'linear-gradient(180deg, color-mix(in srgb, rgb(22 25 34) calc(50% * var(--dsstat-frost, 1)), transparent) 0%, transparent 70%)',
-    }
-  }
+  // 半透明底色：用户自定义色（--dsh-dstat-glass-color，来自设置 → 背景色）
+  // 优先，未设置时按主题给默认值（深色偏冷灰、浅色偏白）。
+  const dark = darkTheme()
+  const fill = dark ? 'rgb(42 46 56)' : 'rgb(255 255 255)'
+  const tint = dark ? 'rgb(22 25 34)' : 'rgb(255 255 255)'
+  const fillRatio = dark ? 50 : 50
+  const tintRatio = dark ? 50 : 35
   return {
     ...base,
-    backgroundColor: 'color-mix(in srgb, rgb(255 255 255) calc(50% * var(--dsstat-frost, 1)), transparent)',
-    backgroundImage: 'linear-gradient(180deg, color-mix(in srgb, rgb(255 255 255) calc(35% * var(--dsstat-frost, 1)), transparent) 0%, transparent 70%)',
+    backgroundColor: `color-mix(in srgb, var(--dsh-dstat-glass-color, ${fill}) calc(${fillRatio}% * var(--dsstat-frost, 1)), transparent)`,
+    backgroundImage: `linear-gradient(180deg, color-mix(in srgb, var(--dsh-dstat-glass-color, ${tint}) calc(${tintRatio}% * var(--dsstat-frost, 1)), transparent) 0%, transparent 70%)`,
   }
 }
 
@@ -68,36 +89,46 @@ function heading(key, text, extra) {
 
 export function StatsDock(props) {
   const enabled = React.useSyncExternalStore(subscribeEnabled, getEnabled)
-  const [leftOpen, setLeftOpen] = React.useState(false)
-  const [rightOpen, setRightOpen] = React.useState(false)
+  // 三个面板互斥：同一时刻只有一个 openPanel（'steps' | 'hit' | 'context' | null）。
+  const [openPanel, setOpenPanel] = React.useState(null)
   const rootRef = React.useRef(null)
   const panelMode = React.useSyncExternalStore(subscribePanelMode, getPanelMode)
   useLocale()
+  const togglePanel = (key) => setOpenPanel((current) => (current === key ? null : key))
 
   // 面板弹出期间把 composerSeat 临时提到「回到底部」按钮（z-8）之上。
   React.useEffect(() => {
     const seat = document.querySelector('[data-composer-seat]')
     if (seat === null) return
-    if (leftOpen || rightOpen) {
+    if (openPanel !== null) {
       seat.style.zIndex = '9'
     } else {
       seat.style.removeProperty('z-index')
     }
-  }, [leftOpen, rightOpen])
+  }, [openPanel])
 
-  // Close both panels on any pointer-down outside this dock's root element.
+  // 点面板外或按 Esc 关闭当前面板。
   React.useEffect(() => {
-    if (!leftOpen && !rightOpen) return
+    if (openPanel === null) return
     const onPointerDown = (e) => {
       const el = rootRef.current
       if (el === null) return
       if (el.contains(e.target)) return
-      setLeftOpen(false)
-      setRightOpen(false)
+      setOpenPanel(null)
+    }
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') setOpenPanel(null)
     }
     document.addEventListener('pointerdown', onPointerDown, true)
-    return () => document.removeEventListener('pointerdown', onPointerDown, true)
-  }, [leftOpen, rightOpen])
+    document.addEventListener('keydown', onKeyDown, true)
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown, true)
+      document.removeEventListener('keydown', onKeyDown, true)
+    }
+  }, [openPanel])
+  const leftOpen = openPanel === 'steps'
+  const rightOpen = openPanel === 'hit'
+  const contextOpen = openPanel === 'context'
 
   // ---- 数据源（随 DSH 版本演进，双通道防御） ----
   // 新版（0.1.2+）：SessionSnapshot 不再携带会话节点，会话内容走 useChat
@@ -112,6 +143,8 @@ export function StatsDock(props) {
   const useProjection = typeof props.useProjection === 'function' ? props.useProjection : null
   const usageProjection = useProjection === null ? undefined : useProjection('tokenUsage')
   const statsProjection = useProjection === null ? undefined : useProjection('sessionStats')
+  const pressureProjection = useProjection === null ? undefined : useProjection('contextPressure')
+  const breakdownProjection = useProjection === null ? undefined : useProjection('contextBreakdown')
 
   const sessionId = props.sessionId !== undefined && props.sessionId !== null
     ? props.sessionId
@@ -131,6 +164,9 @@ export function StatsDock(props) {
 
   const billed = usage === null ? 0 : usage.uncached + usage.read + usage.write
   const hitRate = usage !== null && billed > 0 ? Math.round((usage.read / billed) * 100) : null
+  // 上下文占用（与官方指示器同源同公式）与其系统/工具/消息分解。
+  const context = React.useMemo(() => contextOccupancy(pressureProjection), [pressureProjection])
+  const contextRows = React.useMemo(() => contextParts(breakdownProjection), [breakdownProjection])
   const avgTtft = stats.ttftSteps > 0 ? stats.ttftMs / stats.ttftSteps : null
   const tps = stats.decodeMs > 0 ? stats.decodeTokens / (stats.decodeMs / 1000) : null
 
@@ -257,28 +293,51 @@ export function StatsDock(props) {
     costSection,
   )
 
-  const seg = (key, open, onClick, label, value) => React.createElement('div', {
+  // 上下文面板：样式与左右面板完全一致（同一个 .dsstat-panel），互斥开合。
+  const contextPanel = React.createElement('div', {
+    className: 'dsstat-panel dsstat-panel-right' + (contextOpen ? ' open' : '') + glass,
+    style: panelStyle,
+  },
+    heading('h-context', t('panel.context'), context === null ? null : context.percent + '%'),
+    ...(context === null
+      ? [React.createElement('div', { className: 'dsstat-empty', key: 'ctx-empty' }, t('context.unavailable'))]
+      : [
+          row('ctx-used', t('context.used'), '~' + fmtExact(context.used)),
+          row('ctx-window', t('context.window'), fmtExact(context.window)),
+        ]),
+    ...(context === null || contextRows.length === 0
+      ? []
+      : [
+          divider('d-context'),
+          ...contextRows.map(([key, value]) => row('ctx-' + key, t('context.' + key), '~' + fmtExact(value))),
+        ]),
+  )
+
+  // 底栏按钮：箭头（▾/▴）已去掉，只留标签 + 数值；开合状态靠 aria-expanded
+  // 与展开底色表达。
+  const seg = (key, panelKey, open, label, value) => React.createElement('div', {
     key,
     role: 'button',
     tabIndex: 0,
     'aria-expanded': open,
     className: 'dsstat-seg' + (open ? ' open' : ''),
-    onClick,
-    onKeyDown: onKey(onClick),
+    onClick: () => togglePanel(panelKey),
+    onKeyDown: onKey(() => togglePanel(panelKey)),
   },
     React.createElement('span', { className: 'dsstat-label' }, label),
     React.createElement('span', { className: 'dsstat-val' }, value),
-    React.createElement('span', { className: 'dsstat-chev' }, open ? '▴' : '▾'),
   )
 
   // 插件停用时底栏区域留空（官方统计行由本插件占据，不再渲染）。
   if (!enabled) return null
 
   return React.createElement('div', { className: 'dsstat-root' + glass, ref: rootRef },
-    seg('seg-steps', leftOpen, () => setLeftOpen(!leftOpen), t('seg.steps'), String(stats.steps)),
-    seg('seg-hit', rightOpen, () => setRightOpen(!rightOpen), t('seg.hitRate'), hitRate === null ? '—' : hitRate + '%'),
+    seg('seg-steps', 'steps', leftOpen, t('seg.steps'), String(stats.steps)),
+    seg('seg-hit', 'hit', rightOpen, t('seg.hitRate'), hitRate === null ? '—' : hitRate + '%'),
+    seg('seg-context', 'context', contextOpen, t('seg.context'), context === null ? '—' : context.percent + '%'),
     leftPanel,
     rightPanel,
+    contextPanel,
   )
 }
 
@@ -388,6 +447,40 @@ export function GlassRow() {
     ),
     knob(t('glass.blur'), blur, 0, 40, 0.5, ' px', setBlurPref),
     knob(t('glass.frost'), frost, 0, 100, 1, ' %', setFrostPref),
+  )
+}
+
+// Settings → General: 背景色 —— 半透明模式与传统模式各一个取色器，未设置时
+// 跟随主题（按钮变为可用状态即可恢复默认）。
+export function ColorRow() {
+  const enabled = React.useSyncExternalStore(subscribeEnabled, getEnabled)
+  const glassColor = React.useSyncExternalStore(subscribeColors, getGlassColor)
+  const solidColor = React.useSyncExternalStore(subscribeColors, getSolidColor)
+  useLocale()
+  const picker = (key, label, value, onChange) => React.createElement('div', { className: 'dsstat-color-item', key },
+    React.createElement('span', { className: 'dsstat-knob-label' }, label),
+    React.createElement('input', {
+      type: 'color',
+      className: 'dsstat-color-input',
+      // 未自定义时取色器需要一个具体值（深色主题默认偏冷灰，浅色默认白）。
+      value: value === '' ? (darkTheme() ? '#2a2e38' : '#ffffff') : value,
+      onChange: (e) => onChange(e.target.value),
+      'aria-label': label,
+    }),
+    React.createElement('button', {
+      type: 'button',
+      className: 'dsstat-color-reset' + (value === '' ? ' active' : ''),
+      disabled: value === '',
+      onClick: () => onChange(''),
+    }, t('color.reset')),
+  )
+  if (!enabled) return null
+  return React.createElement('div', { className: 'dsstat-color-row' },
+    React.createElement('span', { className: 'dsstat-mode-label' }, t('color.label')),
+    React.createElement('div', { className: 'dsstat-color-items' },
+      picker('glass', t('color.glass'), glassColor, setGlassColor),
+      picker('solid', t('color.solid'), solidColor, setSolidColor),
+    ),
   )
 }
 

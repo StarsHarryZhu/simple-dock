@@ -7,6 +7,8 @@ const CURRENCY_KEY = 'dsh.dstat.currency'
 const BLUR_KEY = 'dsh.dstat.blur'
 const FROST_KEY = 'dsh.dstat.frost'
 const ENABLED_KEY = 'dsh.dstat.enabled'
+const GLASS_COLOR_KEY = 'dsh.dstat.color.glass'
+const SOLID_COLOR_KEY = 'dsh.dstat.color.solid'
 
 function safeRead(key) {
   try {
@@ -78,6 +80,23 @@ const currency = createPref(CURRENCY_KEY,
 const blurPref = createNumberPref(BLUR_KEY, 14, 0, 40)
 const frostPref = createNumberPref(FROST_KEY, 50, 0, 100)
 
+// 背景色（设置 → 通用设置 → 背景色）：半透明模式与传统模式各一个 #rrggbb；
+// 空串 = 跟随主题（半透明用主题默认玻璃底色，传统用 --dsw-alias-bg-base）。
+const HEX_COLOR = /^#[0-9a-f]{6}$/i
+function createColorPref(key) {
+  return createPref(key,
+    () => {
+      const raw = safeRead(key)
+      return raw !== null && HEX_COLOR.test(raw) ? raw.toLowerCase() : ''
+    },
+    (v) => {
+      if (typeof v !== 'string') return undefined
+      return v === '' ? '' : (HEX_COLOR.test(v) ? v.toLowerCase() : undefined)
+    })
+}
+const glassColorPref = createColorPref(GLASS_COLOR_KEY)
+const solidColorPref = createColorPref(SOLID_COLOR_KEY)
+
 export const getEnabled = () => enabled.get()
 export const setEnabled = (v) => enabled.set(v)
 export const subscribeEnabled = (fn) => enabled.subscribe(fn)
@@ -89,6 +108,8 @@ export const setCurrency = (v) => currency.set(v)
 export const subscribeCurrency = (fn) => currency.subscribe(fn)
 export const getBlurPref = () => blurPref.get()
 export const getFrostPref = () => frostPref.get()
+export const getGlassColor = () => glassColorPref.get()
+export const getSolidColor = () => solidColorPref.get()
 export function setBlurPref(v) {
   blurPref.set(v)
   applyGlassVars()
@@ -97,19 +118,40 @@ export function setFrostPref(v) {
   frostPref.set(v)
   applyGlassVars()
 }
+export function setGlassColor(v) {
+  glassColorPref.set(v)
+  applyGlassVars()
+}
+export function setSolidColor(v) {
+  solidColorPref.set(v)
+  applyGlassVars()
+}
 // 任一玻璃旋钮变化都通知（GlassRow 两个滑杆共用）。
 export function subscribeGlass(fn) {
   const off1 = blurPref.subscribe(fn)
   const off2 = frostPref.subscribe(fn)
   return () => { off1(); off2() }
 }
+// 两个背景色任一变化都通知（ColorRow 两个取色器共用）。
+export function subscribeColors(fn) {
+  const off1 = glassColorPref.subscribe(fn)
+  const off2 = solidColorPref.subscribe(fn)
+  return () => { off1(); off2() }
+}
 
-// 把自定义玻璃值写到 <html>（面板 --dsstat-* 变量链消费）。
+// 把自定义玻璃值与背景色写到 <html>（面板 --dsstat-* 变量链消费）。
+// 背景色为空 = 跟随主题：删除变量，让 CSS/内联样式回退到主题默认值。
 export function applyGlassVars() {
   if (typeof document === 'undefined' || document.documentElement === null) return
   const style = document.documentElement.style
   style.setProperty('--dsh-dstat-blur', blurPref.get() + 'px')
   style.setProperty('--dsh-dstat-frost', String(Math.min(frostPref.get() / 50, 1.4)))
+  const glassColor = glassColorPref.get()
+  if (glassColor === '') style.removeProperty('--dsh-dstat-glass-color')
+  else style.setProperty('--dsh-dstat-glass-color', glassColor)
+  const solidColor = solidColorPref.get()
+  if (solidColor === '') style.removeProperty('--dsh-dstat-solid-color')
+  else style.setProperty('--dsh-dstat-solid-color', solidColor)
 }
 
 // ---- 成本端点（host 预算 + 增量维护） ----

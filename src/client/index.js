@@ -5,7 +5,7 @@ import {
   applyGlassVars, getEnabled, subscribeEnabled,
 } from './core.js'
 import {
-  StatsDock, ModeRow, PricingRow, CurrencyRow, GlassRow, PluginCard, EnabledRow,
+  StatsDock, ModeRow, PricingRow, CurrencyRow, GlassRow, ColorRow, PluginCard, EnabledRow,
 } from './components.js'
 import { NS, dicts, setLocaleFace, t } from './i18n.js'
 import { css } from './styles.js'
@@ -127,5 +127,10 @@ export function apply(ctx) {
   slots.inject('settings.general.item', () => slots.register(
     { name: 'settings.general.item', id: 'dstat-glass', order: 15, label: () => t('glass.label') },
     () => React.createElement(GlassRow, {}),
+  ))
+  // 背景色：半透明模式 / 传统模式各一个取色器（可恢复跟随主题）。
+  slots.inject('settings.general.item', () => slots.register(
+    { name: 'settings.general.item', id: 'dstat-color', order: 16, label: () => t('color.label') },
+    () => React.createElement(ColorRow, {}),
   ))
 }

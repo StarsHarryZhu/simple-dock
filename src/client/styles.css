@@ -22,37 +22,13 @@
   color: var(--dsw-alias-label-secondary);
   font-family: var(--dsw-font-family);
 }
-/* 官方上下文指示器（ContextMeter）在输入栏里就渲染在 conversation.composer.dock
-   这个 slot 之后，而框架给每个 slot 渲染点固定提供 [data-slot="<key>"] 锚点
-   （display:contents，布局中性）——所以用该锚点的相邻兄弟选择器给它套上与本插件
-   一致的胶囊背景：跟随「底栏面板样式」（半透明 / 传统）与「面板玻璃」的模糊、
-   磨砂滑杆。.dsstat-root + * 作为无锚点情形的兼容；只设外观，不动官方点击展开
-   的明细面板，也不干预其 hover。 */
-[data-slot="conversation.composer.dock"] + *,
-.dsstat-root + * {
-  border-radius: 999px;
-  transition: background-color 120ms ease, border-color 120ms ease;
-}
-[data-slot="conversation.composer.dock"]:not(:has(.dsstat-glass)) + *,
-.dsstat-root:not(.dsstat-glass) + * {
-  background: var(--dsw-alias-bg-base);
-  border: 1px solid var(--dsw-alias-border-l1);
-}
-[data-slot="conversation.composer.dock"]:has(.dsstat-glass) + *,
-.dsstat-root.dsstat-glass + * {
-  border: 1px solid #132d5342;
-  background-color: color-mix(in srgb, rgb(255 255 255) calc(50% * var(--dsh-dstat-frost, 1)), transparent);
-  background-image: linear-gradient(180deg, color-mix(in srgb, rgb(255 255 255) calc(35% * var(--dsh-dstat-frost, 1)), transparent) 0%, transparent 70%);
-  backdrop-filter: blur(var(--dsh-dstat-blur, 14px)) saturate(1.2);
-  -webkit-backdrop-filter: blur(var(--dsh-dstat-blur, 14px)) saturate(1.2);
-  box-shadow: inset 0 1px #ffffff80, 0 6px 20px #132d531a;
-}
-body[data-ds-dark-theme] [data-slot="conversation.composer.dock"]:has(.dsstat-glass) + *,
-body[data-ds-dark-theme] .dsstat-root.dsstat-glass + * {
-  border-color: #94b4dc52;
-  background-color: color-mix(in srgb, rgb(42 46 56) calc(50% * var(--dsh-dstat-frost, 1)), transparent);
-  background-image: linear-gradient(180deg, color-mix(in srgb, rgb(22 25 34) calc(50% * var(--dsh-dstat-frost, 1)), transparent) 0%, transparent 70%);
-  box-shadow: inset 0 1px #ffffff12, 0 6px 24px #02060e38;
+/* 上下文改为本插件自渲染（第三个按钮 + 面板，样式与另两个一致），因此把
+   官方 ContextMeter 隐藏，避免重复显示。锚点是 slot outlet 的
+   [data-slot="<key>"]（display:contents 的布局中性元素），ContextMeter 就渲染
+   在它之后；:has(.dsstat-root) 限定「只有我们确实接管这一行时才隐藏」——
+   hero / 无会话时本插件不渲染，官方指示器照常显示。 */
+[data-slot="conversation.composer.dock"]:has(.dsstat-root) + * {
+  display: none;
 }
 .dsstat-seg {
   display: inline-flex;
@@ -69,7 +45,6 @@ body[data-ds-dark-theme] .dsstat-root.dsstat-glass + * {
 .dsstat-seg.open .dsstat-val { color: var(--dsw-alias-brand-primary); }
 .dsstat-label { font-size: 11px; color: var(--dsw-alias-label-tertiary); }
 .dsstat-val { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--dsw-alias-label-primary); }
-.dsstat-chev { font-size: 9px; color: var(--dsw-alias-label-tertiary); }
 .dsstat-panel {
   position: absolute;
   bottom: calc(100% + 10px);
@@ -77,9 +52,10 @@ body[data-ds-dark-theme] .dsstat-root.dsstat-glass + * {
   width: min(320px, 100%);
   padding: 10px 12px 12px;
   overflow: hidden;
-  /* 传统模式背景 = 页面主背景（--dsw-alias-bg-base），深浅主题自动一致；
+  /* 传统模式背景 = 用户在「设置 → 通用设置 → 背景色」里选的传统模式色，
+     未设置时回退到页面主背景（--dsw-alias-bg-base，深浅主题自动一致）；
      半透明模式由内联 color-mix 填充覆盖，不受此值影响。 */
-  background: var(--dsw-alias-bg-base);
+  background: var(--dsh-dstat-solid-color, var(--dsw-alias-bg-base));
   border: 1px solid var(--dsw-alias-border-l1);
   border-radius: 10px;
   box-shadow: var(--dsw-shadow-lv2);
@@ -232,6 +208,40 @@ body[data-ds-dark-theme] .dsstat-glass.dsstat-panel {
 .dsstat-enabled-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .dsstat-enabled-label { color: var(--dsw-alias-label-primary); }
 .dsstat-enabled-desc { font-size: 11px; color: var(--dsw-alias-label-tertiary); }
+/* Settings → General: 背景色（半透明 / 传统两个取色器 + 跟随主题）。 */
+.dsstat-color-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+  font-size: 12px;
+  font-family: var(--dsw-font-family);
+}
+.dsstat-color-items { display: inline-flex; align-items: center; gap: 12px; }
+.dsstat-color-item { display: inline-flex; align-items: center; gap: 6px; }
+.dsstat-color-input {
+  width: 28px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+}
+.dsstat-color-reset {
+  appearance: none;
+  border: 1px solid var(--dsw-alias-border-l1);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  border-radius: 8px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+}
+.dsstat-color-reset:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); }
+.dsstat-color-reset:disabled { opacity: 0.45; cursor: default; }
 /* Settings → General: 面板玻璃滑杆。 */
 .dsstat-glass-row {
   display: flex;

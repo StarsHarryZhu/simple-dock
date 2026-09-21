@@ -200,7 +200,7 @@ export declare function apply(ctx: Context): void;
   globalThis.document = {
     createElement: () => ({ setAttribute: () => {}, remove: () => {}, textContent: '' }),
     head: { appendChild: () => {} },
-    documentElement: { style: { setProperty: () => {} } },
+    documentElement: { style: { setProperty: () => {}, removeProperty: () => {} } },
     body: { hasAttribute: () => false },
   }
   new Function(clientBundle)()
@@ -219,26 +219,34 @@ export declare function apply(ctx: Context): void;
     throw new Error('settings.plugin.item 在新版已不存在，不应再注册')
   }
   const generalRows = registrations.filter((entry) => entry.name === 'settings.general.item')
-  if (generalRows.length !== 5) throw new Error('settings.general.item 应有 5 行（含总开关），实际 ' + String(generalRows.length))
+  if (generalRows.length !== 6) throw new Error('settings.general.item 应有 6 行（开关 / 样式 / 价格表 / 币种 / 玻璃 / 背景色），实际 ' + String(generalRows.length))
   const generalIds = generalRows.map((entry) => entry.id)
-  if (!generalIds.includes('dstat-enabled')) throw new Error('通用设置缺少底栏总开关行 dstat-enabled')
+  for (const required of ['dstat-enabled', 'dstat-color']) {
+    if (!generalIds.includes(required)) throw new Error('通用设置缺少行 ' + required + '（实际 ' + generalIds.join(', ') + '）')
+  }
   const bundleConfig = registrations.find((entry) => entry.name === 'plugins.bundle.config')
   if (bundleConfig.key !== 'dsh-ui-simple-dock') throw new Error('plugins.bundle.config 的 key 应为 bundle 包名')
   const dock = registrations.find((entry) => entry.name === 'conversation.composer.dock')
   if (dock.priority !== -1) throw new Error('dock 需以 priority -1 遮蔽官方 stats 行')
-  // 底栏布局与上下文玻璃：这两条是本次 UI 重做的核心，丢了就等于回退。
+  // 底栏布局、上下文接管与背景色设置：丢了就等于回退。
   const cssText = read(join(CLIENT_SRC, 'styles.css'))
   if (!/\.dsstat-root\s*\{[\s\S]*?flex:\s*1 1 auto/.test(cssText)) {
-    throw new Error('.dsstat-root 需 flex:1 1 auto 与官方底栏同行（左步数 / 右命中率）')
+    throw new Error('.dsstat-root 需 flex:1 1 auto 与官方底栏同行（左步数 / 右命中率与上下文）')
   }
-  if (!cssText.includes('[data-slot="conversation.composer.dock"] + *')) {
-    throw new Error('缺少官方上下文指示器的玻璃化规则（[data-slot="conversation.composer.dock"] + *）')
+  if (!cssText.includes('[data-slot="conversation.composer.dock"]:has(.dsstat-root) + *')) {
+    throw new Error('缺少隐藏官方上下文指示器的规则（我们自渲染第三个按钮与面板）')
   }
-  if (!cssText.includes('[data-slot="conversation.composer.dock"]:has(.dsstat-glass) + *')) {
-    throw new Error('缺少上下文指示器的半透明（玻璃）规则')
+  if (cssText.includes('[data-slot="conversation.composer.dock"]:has(.dsstat-glass) + *')) {
+    throw new Error('官方指示器已改为隐藏 + 自渲染，不应再有用玻璃胶囊包它的规则')
   }
-  if (!cssText.includes('[data-slot="conversation.composer.dock"]:not(:has(.dsstat-glass)) + *')) {
-    throw new Error('缺少上下文指示器的传统（实底）规则')
+  if (cssText.includes('dsstat-chev')) {
+    throw new Error('步数 / 命中率按钮不应再有箭头（dsstat-chev）')
+  }
+  if (!cssText.includes('var(--dsh-dstat-solid-color, var(--dsw-alias-bg-base))')) {
+    throw new Error('面板传统背景应走背景色设置变量 --dsh-dstat-solid-color')
+  }
+  if (!cssText.includes('.dsstat-color-row')) {
+    throw new Error('缺少背景色设置行的样式（.dsstat-color-row）')
   }
   if (cssText.includes('div:has(> .dsstat-root)')) {
     throw new Error('不要用 div:has(> .dsstat-root)：outlet wrapper 是 display:contents，'
