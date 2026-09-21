@@ -248,6 +248,11 @@ export declare function apply(ctx: Context): void;
   if (!cssText.includes('.dsstat-color-row')) {
     throw new Error('缺少背景色设置行的样式（.dsstat-color-row）')
   }
+  // 上下文按钮/面板：结构照官方（圆环 trigger、占比条、图例），背景仍走我们
+  // 的面板样式。
+  for (const selector of ['.dsstat-ctx-trigger', '.dsstat-ctx-track', '.dsstat-ctx-bar', '.dsstat-ctx-panel', '.dsstat-right-group']) {
+    if (!cssText.includes(selector)) throw new Error('缺少上下文样式 ' + selector)
+  }
   if (cssText.includes('div:has(> .dsstat-root)')) {
     throw new Error('不要用 div:has(> .dsstat-root)：outlet wrapper 是 display:contents，'
       + '它的 *:last-child 就是我们自己的 .dsstat-root，会把胶囊样式打到坞自己身上')

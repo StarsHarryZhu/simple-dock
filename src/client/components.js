@@ -34,14 +34,45 @@ function contextOccupancy(pressure) {
   return { percent: Math.min(100, Math.round(used / window * 100)), used, window }
 }
 
-// 上下文的系统/工具/消息分解（heuristic，官方同样标注为近似值）。
-function contextParts(breakdown) {
-  if (breakdown === null || breakdown === undefined || typeof breakdown !== 'object') return []
-  return [
-    ['system', num(breakdown.systemTokens)],
-    ['tools', num(breakdown.toolsTokens)],
-    ['messages', num(breakdown.messageTokens)],
-  ].filter(([, value]) => typeof value === 'number' && value > 0)
+// 上下文面板图例：与官方 ContextMeter 同序、同色（系统提示词 / 工具定义 / 对话消息）。
+const CONTEXT_ROWS = [
+  { key: 'systemTokens', label: 'context.system', color: 'dsstat-ctx-system' },
+  { key: 'toolsTokens', label: 'context.tools', color: 'dsstat-ctx-tools' },
+  { key: 'messageTokens', label: 'context.messages', color: 'dsstat-ctx-messages' },
+]
+
+// 官方把本地化的占用句子按占位符切开，让读数单独着色而词序仍由语言决定
+//（'上下文已用 45%' / '45% of context used'）。
+const CONTEXT_READING_SLOT = '\u0000'
+
+// 圆环几何：官方 ContextMeter 同为 14px viewBox、2px 描边、自 12 点方向起画。
+const CONTEXT_RING_RADIUS = 5.5
+const CONTEXT_RING_CIRCUMFERENCE = 2 * Math.PI * CONTEXT_RING_RADIUS
+
+/** 官方式圆环（track + fill 两段描边）。 */
+function ContextRing(props) {
+  const ratio = CONTEXT_RING_CIRCUMFERENCE * (props.percent / 100)
+  return React.createElement('svg', { viewBox: '0 0 14 14', width: 14, height: 14, 'aria-hidden': true },
+    React.createElement('circle', { className: 'dsstat-ctx-track', cx: 7, cy: 7, r: CONTEXT_RING_RADIUS }),
+    React.createElement('circle', {
+      className: 'dsstat-ctx-fill',
+      cx: 7,
+      cy: 7,
+      r: CONTEXT_RING_RADIUS,
+      strokeDasharray: ratio + ' ' + CONTEXT_RING_CIRCUMFERENCE,
+      transform: 'rotate(-90 7 7)',
+    }),
+  )
+}
+
+/** 紧凑 token 数（官方同一套 K/M 模板与取整规则）。 */
+function formatTokens(value, tr) {
+  const scaled = (candidate) => (candidate >= 100
+    ? String(Math.round(candidate))
+    : String(Math.round(candidate * 10) / 10))
+  if (value < 1000) return String(value)
+  if (value < 1000000) return tr('number.thousand', { value: scaled(value / 1000) })
+  return tr('number.million', { value: scaled(value / 1000000) })
 }
 
 // 磨砂玻璃填充 + 模糊都走 CSS 变量，旋钮改动实时生效、无需重渲染：
@@ -166,7 +197,31 @@ export function StatsDock(props) {
   const hitRate = usage !== null && billed > 0 ? Math.round((usage.read / billed) * 100) : null
   // 上下文占用（与官方指示器同源同公式）与其系统/工具/消息分解。
   const context = React.useMemo(() => contextOccupancy(pressureProjection), [pressureProjection])
-  const contextRows = React.useMemo(() => contextParts(breakdownProjection), [breakdownProjection])
+  const contextBreakdown = breakdownProjection === null || breakdownProjection === undefined
+    ? null
+    : breakdownProjection
+  // 分段占比：整条长度为 provider 精确的百分比，配色部分只按 heuristic 分解
+  // 比例分配（官方同款算法）；没有分解数据时退化为单段总占用。
+  const contextSegments = (() => {
+    if (context === null) return []
+    const total = contextBreakdown === null
+      ? 0
+      : (num(contextBreakdown.systemTokens) ?? 0)
+        + (num(contextBreakdown.toolsTokens) ?? 0)
+        + (num(contextBreakdown.messageTokens) ?? 0)
+    const parts = contextBreakdown === null || total === 0
+      ? [{ key: 'total', color: '', width: context.percent }]
+      : CONTEXT_ROWS.map(row => ({
+        key: row.key,
+        color: row.color,
+        width: context.percent * ((num(contextBreakdown[row.key]) ?? 0) / total),
+      }))
+    return parts.filter(part => part.width > 0)
+  })()
+  // 面板标题左右两截（官方用占位符切分，中文只有前缀、英文两侧都有）。
+  const contextHeadline = context === null
+    ? ['', '']
+    : t('context.aria', { percent: CONTEXT_READING_SLOT }).split(CONTEXT_READING_SLOT).map(part => part.trim())
   const avgTtft = stats.ttftSteps > 0 ? stats.ttftMs / stats.ttftSteps : null
   const tps = stats.decodeMs > 0 ? stats.decodeTokens / (stats.decodeMs / 1000) : null
 
@@ -293,28 +348,42 @@ export function StatsDock(props) {
     costSection,
   )
 
-  // 上下文面板：样式与左右面板完全一致（同一个 .dsstat-panel），互斥开合。
-  const contextPanel = React.createElement('div', {
-    className: 'dsstat-panel dsstat-panel-right' + (contextOpen ? ' open' : '') + glass,
+  // 上下文面板：内容与视觉完全照官方 ContextMeter 的展开面板（标题行 + 占比条
+  // + 图例行），只有**背景/边框/阴影**换成我们自己的面板样式（传统实底或
+  // 半透明玻璃，跟随背景色与玻璃滑杆设置）。
+  const contextPanel = context === null ? null : React.createElement('div', {
+    className: 'dsstat-panel dsstat-panel-right dsstat-ctx-panel' + (contextOpen ? ' open' : '') + glass,
     style: panelStyle,
+    role: 'dialog',
+    'aria-label': t('context.used'),
   },
-    heading('h-context', t('panel.context'), context === null ? null : context.percent + '%'),
-    ...(context === null
-      ? [React.createElement('div', { className: 'dsstat-empty', key: 'ctx-empty' }, t('context.unavailable'))]
-      : [
-          row('ctx-used', t('context.used'), '~' + fmtExact(context.used)),
-          row('ctx-window', t('context.window'), fmtExact(context.window)),
-        ]),
-    ...(context === null || contextRows.length === 0
-      ? []
-      : [
-          divider('d-context'),
-          ...contextRows.map(([key, value]) => row('ctx-' + key, t('context.' + key), '~' + fmtExact(value))),
-        ]),
+    React.createElement('div', { className: 'dsstat-ctx-header' },
+      React.createElement('span', { className: 'dsstat-ctx-headline' }, contextHeadline[0] ?? ''),
+      React.createElement('span', { className: 'dsstat-ctx-percent' }, context.percent + '%'),
+      React.createElement('span', { className: 'dsstat-ctx-headline' }, contextHeadline[1] ?? ''),
+      React.createElement('span', { className: 'dsstat-ctx-figures' },
+        '~' + formatTokens(context.used, t) + ' / ' + formatTokens(context.window, t)),
+    ),
+    React.createElement('div', { className: 'dsstat-ctx-bar' },
+      ...contextSegments.map(part => React.createElement('div', {
+        key: part.key,
+        className: 'dsstat-ctx-segment' + (part.color === '' ? '' : ' ' + part.color),
+        style: { width: part.width + '%' },
+      })),
+    ),
+    contextBreakdown === null ? null : React.createElement('dl', { className: 'dsstat-ctx-rows' },
+      ...CONTEXT_ROWS.map(item => React.createElement('div', { className: 'dsstat-ctx-row', key: item.key },
+        React.createElement('dt', null,
+          React.createElement('span', { className: 'dsstat-ctx-swatch ' + item.color, 'aria-hidden': true }),
+          t(item.label),
+        ),
+        React.createElement('dd', null, '~' + formatTokens(num(contextBreakdown[item.key]) ?? 0, t)),
+      )),
+    ),
   )
 
   // 底栏按钮：箭头（▾/▴）已去掉，只留标签 + 数值；开合状态靠 aria-expanded
-  // 与展开底色表达。
+  // 与展开底色表达。上下文按钮另走官方 trigger 样式（圆环 + 百分比）。
   const seg = (key, panelKey, open, label, value) => React.createElement('div', {
     key,
     role: 'button',
@@ -328,13 +397,29 @@ export function StatsDock(props) {
     React.createElement('span', { className: 'dsstat-val' }, value),
   )
 
+  const contextButton = context === null ? null : React.createElement('button', {
+    type: 'button',
+    className: 'dsstat-ctx-trigger' + (contextOpen ? ' open' : ''),
+    'aria-haspopup': 'dialog',
+    'aria-expanded': contextOpen,
+    'aria-label': t('context.aria', { percent: context.percent + '%' }),
+    title: t('context.aria', { percent: context.percent + '%' }),
+    onClick: () => togglePanel('context'),
+  },
+    React.createElement(ContextRing, { percent: context.percent }),
+    React.createElement('span', null, context.percent + '%'),
+  )
+
   // 插件停用时底栏区域留空（官方统计行由本插件占据，不再渲染）。
   if (!enabled) return null
 
+  // 布局：步数在最左；命中率与上下文包成右侧一组（两组分开，右侧两块相邻）。
   return React.createElement('div', { className: 'dsstat-root' + glass, ref: rootRef },
     seg('seg-steps', 'steps', leftOpen, t('seg.steps'), String(stats.steps)),
-    seg('seg-hit', 'hit', rightOpen, t('seg.hitRate'), hitRate === null ? '—' : hitRate + '%'),
-    seg('seg-context', 'context', contextOpen, t('seg.context'), context === null ? '—' : context.percent + '%'),
+    React.createElement('div', { className: 'dsstat-right-group' },
+      seg('seg-hit', 'hit', rightOpen, t('seg.hitRate'), hitRate === null ? '—' : hitRate + '%'),
+      contextButton,
+    ),
     leftPanel,
     rightPanel,
     contextPanel,

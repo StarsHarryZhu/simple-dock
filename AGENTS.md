@@ -230,17 +230,24 @@ assets/ demo/       screenshots and recordings
   carry no arrow and no collapsed background, and a single `openPanel` state
   keeps at most one panel open (another button, an outside pointer-down, or Esc
   closes it).
-- **The context button is ours, not the official meter's.** The official
-  `ContextMeter` is hidden through the anchor's adjacent sibling —
+- **The context button/panel mirrors the official design, but our background.**
+  The official `ContextMeter` is hidden through the anchor's adjacent sibling —
   `[data-slot="conversation.composer.dock"]:has(.dsstat-root) + * { display: none }`
-  — and we render the occupancy from the same projections (`contextPressure`
-  for `projectedTokens ?? pressureTokens` / `contextWindow`, `contextBreakdown`
-  for the system/tools/messages split) with the official percent formula. The
-  `:has(.dsstat-root)` guard means the official indicator stays visible in hero
-  / session-less states and while this plugin is disabled. Never target
-  `div:has(> .dsstat-root) > *:last-child`: the outlet wrapper matches it and
-  its last child is `.dsstat-root` itself, so the styling would land on our own
-  row (the build smoke rejects that selector).
+  — and we re-render its design from the same projections: the 14px ring
+  (r 5.5, 2px stroke, dasharray `C·percent/100 C`, rotated -90°), the
+  `余/上下文`-style pill, and the panel's header (localized sentence split on the
+  null placeholder + percent + `~used / window`), proportional bar and the
+  system/tools/messages legend with the official tints
+  (`--dsw-static-neutral-bluish-400`, `rgb(167,139,250)`, `--dsw-static-blue-450`)
+  and the official copy. **Only the container background/border/shadow stay
+  ours** (`.dsstat-panel` + the glass inline style, so the panel follows the
+  panel-style, glass sliders and background colors). The `:has(.dsstat-root)`
+  guard means the official indicator stays visible in hero / session-less states
+  and while this plugin is disabled. The layout puts 步数 at the far left with
+  `命中率` + the context trigger wrapped in `.dsstat-right-group` on the right.
+  Never target `div:has(> .dsstat-root) > *:last-child`: the outlet wrapper
+  matches it and its last child is `.dsstat-root` itself, so the styling would
+  land on our own row (the build smoke rejects that selector).
 - Background color settings write `<html>` variables — `--dsh-dstat-glass-color`
   (translucent fill, mixed with the frost knob) and `--dsh-dstat-solid-color`
   (classic panel background) — and an empty value removes the variable so the
