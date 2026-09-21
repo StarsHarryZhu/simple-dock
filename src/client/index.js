@@ -78,13 +78,31 @@ export function apply(ctx) {
     return subscribeEnabled(syncDock)
   })
 
-  // Settings → Plugins: master on/off card (same shape as other plugin cards).
-  // This slot is keyed by the settings namespace the card edits; the key must
-  // be one the Host serves — the `simple-dock` namespace registered by the
-  // node half — or the owner never dispatches the card.
-  slots.inject('settings.plugin.item', () => slots.register(
-    { name: 'settings.plugin.item', key: 'simple-dock', order: 6, label: 'Simple Dock' },
-    () => React.createElement(PluginCard, {}),
+  // Settings → Plugins: the master on/off card. The 0.1.6 shell renders
+  // feature-owned tabs from `settings.plugins.tab` (the Settings → Plugins
+  // section) and a bundle's own configuration from the Plugins page's keyed
+  // `plugins.bundle.config` (key = this bundle's package name). The old keyed
+  // `settings.plugin.item` no longer exists, and registering into an
+  // undeclared slot throws — so the card lives on the two current entries.
+  slots.inject('settings.plugins.tab', () => slots.register(
+    {
+      name: 'settings.plugins.tab',
+      id: 'simple-dock',
+      order: 100,
+      label: () => 'Simple Dock',
+      locale: NS,
+    },
+    (props) => React.createElement(PluginCard, { ...props, view: 'page' }),
+  ))
+  slots.inject('plugins.bundle.config', () => slots.register(
+    {
+      name: 'plugins.bundle.config',
+      key: 'dsh-ui-simple-dock',
+      order: 10,
+      label: () => 'Simple Dock',
+      locale: NS,
+    },
+    (props) => React.createElement(PluginCard, props),
   ))
 
   // Settings → General: four rows (labels follow the system locale).

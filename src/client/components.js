@@ -368,11 +368,18 @@ export function GlassRow() {
   )
 }
 
-// Settings → Plugins card: master on/off switch (same shape as other plugin cards).
-export function PluginCard() {
+// Settings → Plugins card: master on/off switch. Two owners render it: the
+// Settings → Plugins tab (`settings.plugins.tab`, no view prop) and the
+// Plugins page's keyed bundle config (`plugins.bundle.config`, which asks for a
+// `summary` one-liner and a `page` body).
+export function PluginCard(props) {
   const enabled = React.useSyncExternalStore(subscribeEnabled, getEnabled)
   useLocale()
-  return React.createElement('li', { className: 'dsstat-card' },
+  if (props !== null && props !== undefined && props.view === 'summary') {
+    return React.createElement('span', { className: 'dsstat-card-summary' },
+      t(enabled ? 'card.summary.on' : 'card.summary.off'))
+  }
+  return React.createElement('div', { className: 'dsstat-card' },
     React.createElement('div', { className: 'dsstat-card-head' },
       React.createElement('div', { className: 'dsstat-card-text' },
         React.createElement('div', { className: 'dsstat-card-title' }, 'Simple Dock'),

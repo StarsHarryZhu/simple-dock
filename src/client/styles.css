@@ -277,6 +277,12 @@ body[data-ds-dark-theme] .dsstat-glass.dsstat-panel {
   cursor: pointer;
 }
 .dsstat-card-toggle:hover { background: var(--dsw-alias-interactive-bg-hover); }
+/* Plugins 页卡片下的一行状态描述（keyed bundle config 的 summary 视图）。 */
+.dsstat-card-summary {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 18px;
+}
 .dsstat-card-check {
   display: inline-flex;
   align-items: center;

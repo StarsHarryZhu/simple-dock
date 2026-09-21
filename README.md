@@ -71,7 +71,7 @@ ln -sfn "$DSH_HOME/profiles/node_modules/@deepseek-ai/schemastery"  node_modules
 重启后自动生效（bundle **无需审批**）。验证：
 
 - 底栏出现 `步数 N` ｜ `命中率 X%`
-- `设置 → 插件` 出现 **Simple Dock** 卡片（可开关）
+- `设置 → 插件` 出现 **Simple Dock** 标签页（开关在里面）；侧栏 **插件** 页里本 bundle 的配置处也有同一个开关
 - `设置 → 通用设置` 出现四行：底栏面板样式 / 价格表 / 成本计价币种 / 面板玻璃
 
 ### 卸载
@@ -118,9 +118,9 @@ New-Item -ItemType Junction -Path "C:\path\to\simple-dock\node_modules\@deepseek
 ## 其他
 
 - 面板弹出时自动避让「回到底部」按钮；键盘可操作（Enter/空格）
-- 成本按会话缓存：打开秒显旧值，后台每小时自动刷新，也可点「↻」手动刷新
+- 成本由 node 半区（host）维护：打开面板即显示已算好的值，点「↻」可强制重算该会话
 - 非 DeepSeek 模型不显示预估费用
-- `设置 → 插件` 卡片上的开关：关闭后**恢复 DSH 官方底栏**（本插件的底栏注册随之注销），重新开启即恢复统计坞
+- 插件开关（`设置 → 插件` 的 Simple Dock 标签页 / 侧栏**插件**页里本 bundle 的配置）：关闭后**恢复 DSH 官方底栏**（本插件的底栏注册随之注销），重新开启即恢复统计坞
 
 ## 成本计算（内置价格表，不联网）
 

@@ -102,7 +102,8 @@ new bundle rows. After restart, the dynamic per-session copy of this plugin
 
    → prints `function`.
 3. After restart, in the web UI: the dock shows `步数 N` / `命中率 X%`;
-   `设置 → 插件` lists a **Simple Dock** card with an on/off switch;
+   the on/off card appears both in `设置 → 插件` (a **Simple Dock** tab) and on
+   the sidebar **Plugins** page as this bundle's configuration;
    `设置 → 通用设置` shows the four rows (底栏面板样式 / 价格表 /
    成本计价币种 / 面板玻璃). Check the browser console for
    `client-modules` load errors if anything is missing.
@@ -201,10 +202,23 @@ assets/ demo/       screenshots and recordings
   session with no usable record (absent, or written under a different
   `PRICE_VERSION`) is fully re-priced and written back, which is the
   fresh-install backfill path.
-- The settings plugin card and general rows are plain slot registrations
-  (`settings.plugin.item` key `simple-dock` — keyed slots dispatch by the
-  served namespace, not an id — `settings.general.item` ids `dstat-*`,
-  composer dock id `stats` priority -1).
+- Slot registrations are plain entries: the on/off card on both
+  `settings.plugins.tab` (Settings → Plugins section, id `simple-dock`) and the
+  Plugins page's keyed `plugins.bundle.config` (key = this bundle's package
+  name `dsh-ui-simple-dock`), the four rows on `settings.general.item`
+  (ids `dstat-*`), and the composer dock on `conversation.composer.dock`
+  (id `stats`, `priority: -1` to shadow the official stats line).
+  `settings.plugin.item` no longer exists in the 0.1.6 shell: registering into
+  an undeclared slot throws, so a stale slot would drop the card silently while
+  the rest of the plugin keeps working.
+- The card component serves both owners: `plugins.bundle.config` asks for a
+  `summary` one-liner and a `page` body (`view` prop), the settings tab renders
+  the body without a `view`.
+- `dsh.client.inject` must list real client packages: it names the packages
+  whose client bundles this plugin extends (`dsh-client-ui-slots`,
+  `dsh-client-locale`, `dsh-client-ui-settings`, `dsh-client-ui-settings-plugins`,
+  `dsh-client-ui-plugin-manager`). `@deepseek-ai/dsh-client-runtime` was removed
+  upstream and must not be listed.
 - The composer dock registration is dynamic: the plugin card's on/off switch
   subscribes the enabled pref and unregisters the dock (`slots.inject`
   disposer) so the official stats line renders again when disabled.

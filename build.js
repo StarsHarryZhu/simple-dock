@@ -161,22 +161,69 @@ export declare function apply(ctx: Context): void;
 `)
 
 // ---- 验证 ----
-// 语法校验 + 执行冒烟：打桩 window/react 真正跑一次 factory，确保 bundle
-// 顶层无游离语句、且导出 apply 函数与 inject 数组（历史 bug 回归防护）。
+// 语法校验 + 执行冒烟：打桩 window/react/document/slots/locale 真正跑一次
+// apply，确保 bundle 顶层无游离语句、导出 apply 与 inject，并把注册到的
+// 槽位核对一遍（注册进已删除的槽位会抛错，这层断言防止回归）。
 {
+  const registrations = []
+  const slots = {
+    inject: (name, callback) => { callback(); return () => {} },
+    register: (options) => { registrations.push(options); return () => {} },
+  }
+  const locale = {
+    register: () => () => {},
+    subscribe: () => () => {},
+    getSnapshot: () => ({ revision: 0 }),
+    bind: () => (key) => key,
+  }
+  const ctx = {
+    get: (name) => (name === 'slots' ? slots : name === 'locale' ? locale : undefined),
+    effect: (fn) => {
+      const disposer = fn()
+      return () => { if (typeof disposer === 'function') disposer() }
+    },
+  }
   globalThis.window = {
+    localStorage: { getItem: () => null, setItem: () => {} },
     __ModuleLoader__: {
-      load: ({ id, factory }) => {
+      load: ({ factory }) => {
         const exports = factory((name) => {
-          if (name === 'react') return {} // 只验证可加载，不执行组件
+          if (name === 'react') return {} // 组件函数不执行，桩只需存在
           throw new Error('unexpected require: ' + name)
         })
         if (typeof exports.apply !== 'function') throw new Error('bundle 未导出 apply 函数')
         if (!Array.isArray(exports.inject)) throw new Error('bundle 未导出 inject 数组')
+        exports.apply(ctx)
       },
     },
   }
+  globalThis.document = {
+    createElement: () => ({ setAttribute: () => {}, remove: () => {}, textContent: '' }),
+    head: { appendChild: () => {} },
+    documentElement: { style: { setProperty: () => {} } },
+    body: { hasAttribute: () => false },
+  }
   new Function(clientBundle)()
+  const names = registrations.map((entry) => entry.name)
+  // 0.1.6 的槽位契约：dock 遮蔽官方 stats 行、Settings → Plugins 的 tab、
+  // Plugins 页的 keyed bundle 配置、以及通用设置四行。
+  for (const required of [
+    'conversation.composer.dock',
+    'settings.general.item',
+    'settings.plugins.tab',
+    'plugins.bundle.config',
+  ]) {
+    if (!names.includes(required)) throw new Error('缺少槽位注册: ' + required + '（实际: ' + names.join(', ') + '）')
+  }
+  if (names.includes('settings.plugin.item')) {
+    throw new Error('settings.plugin.item 在新版已不存在，不应再注册')
+  }
+  const generalRows = registrations.filter((entry) => entry.name === 'settings.general.item')
+  if (generalRows.length !== 4) throw new Error('settings.general.item 应有 4 行，实际 ' + String(generalRows.length))
+  const bundleConfig = registrations.find((entry) => entry.name === 'plugins.bundle.config')
+  if (bundleConfig.key !== 'dsh-ui-simple-dock') throw new Error('plugins.bundle.config 的 key 应为 bundle 包名')
+  const dock = registrations.find((entry) => entry.name === 'conversation.composer.dock')
+  if (dock.priority !== -1) throw new Error('dock 需以 priority -1 遮蔽官方 stats 行')
 }
 console.log('lib/client.js :', Buffer.byteLength(clientBundle), 'bytes')
 console.log('lib/index.js  :', Buffer.byteLength(nodeHalf), 'bytes')

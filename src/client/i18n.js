@@ -53,6 +53,8 @@ const zh = {
   'card.desc': '底栏统计坞：性能 / 简报 / Token 明细 / 预估成本',
   'card.on': '已启用',
   'card.off': '已停用',
+  'card.summary.on': '已启用 · 底栏显示性能 / 简报 / Token / 成本',
+  'card.summary.off': '已停用 · 使用 DSH 官方底栏统计行',
 }
 
 const en = {
@@ -100,6 +102,8 @@ const en = {
   'card.desc': 'Composer dock stats: performance / brief / tokens / est. cost',
   'card.on': 'Enabled',
   'card.off': 'Disabled',
+  'card.summary.on': 'Enabled · performance / brief / tokens / cost in the composer dock',
+  'card.summary.off': "Disabled · DSH's official stats line is used",
 }
 
 /** 完整字典（zh/en 键集合一致，注册时由 locale 服务校验双语文档）。 */
