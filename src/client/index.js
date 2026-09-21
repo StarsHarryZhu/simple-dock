@@ -5,7 +5,7 @@ import {
   applyGlassVars, getEnabled, subscribeEnabled,
 } from './core.js'
 import {
-  StatsDock, ModeRow, PricingRow, CurrencyRow, GlassRow, PluginCard,
+  StatsDock, ModeRow, PricingRow, CurrencyRow, GlassRow, PluginCard, EnabledRow,
 } from './components.js'
 import { NS, dicts, setLocaleFace, t } from './i18n.js'
 import { css } from './styles.js'
@@ -105,7 +105,13 @@ export function apply(ctx) {
     (props) => React.createElement(PluginCard, props),
   ))
 
-  // Settings → General: four rows (labels follow the system locale).
+  // Settings → General: master on/off row first (it must stay usable while the
+  // dock is disabled, so the switch can be turned back on), then the four
+  // appearance/price rows (labels follow the system locale).
+  slots.inject('settings.general.item', () => slots.register(
+    { name: 'settings.general.item', id: 'dstat-enabled', order: 11, label: () => t('enabled.label') },
+    () => React.createElement(EnabledRow, {}),
+  ))
   slots.inject('settings.general.item', () => slots.register(
     { name: 'settings.general.item', id: 'dstat-mode', order: 12, label: () => t('mode.label') },
     () => React.createElement(ModeRow, {}),

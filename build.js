@@ -219,11 +219,24 @@ export declare function apply(ctx: Context): void;
     throw new Error('settings.plugin.item 在新版已不存在，不应再注册')
   }
   const generalRows = registrations.filter((entry) => entry.name === 'settings.general.item')
-  if (generalRows.length !== 4) throw new Error('settings.general.item 应有 4 行，实际 ' + String(generalRows.length))
+  if (generalRows.length !== 5) throw new Error('settings.general.item 应有 5 行（含总开关），实际 ' + String(generalRows.length))
+  const generalIds = generalRows.map((entry) => entry.id)
+  if (!generalIds.includes('dstat-enabled')) throw new Error('通用设置缺少底栏总开关行 dstat-enabled')
   const bundleConfig = registrations.find((entry) => entry.name === 'plugins.bundle.config')
   if (bundleConfig.key !== 'dsh-ui-simple-dock') throw new Error('plugins.bundle.config 的 key 应为 bundle 包名')
   const dock = registrations.find((entry) => entry.name === 'conversation.composer.dock')
   if (dock.priority !== -1) throw new Error('dock 需以 priority -1 遮蔽官方 stats 行')
+  // 底栏布局与上下文玻璃：这两条是本次 UI 重做的核心，丢了就等于回退。
+  const cssText = read(join(CLIENT_SRC, 'styles.css'))
+  if (!/\.dsstat-root\s*\{[\s\S]*?flex:\s*1 1 auto/.test(cssText)) {
+    throw new Error('.dsstat-root 需 flex:1 1 auto 与官方底栏同行（左步数 / 右命中率）')
+  }
+  if (!cssText.includes('.dsstat-root.dsstat-glass + *')) {
+    throw new Error('缺少官方上下文指示器的玻璃化规则（.dsstat-root.dsstat-glass + *）')
+  }
+  if (!cssText.includes('.dsstat-root:not(.dsstat-glass) + *')) {
+    throw new Error('缺少上下文指示器的传统（实底）规则')
+  }
 }
 console.log('lib/client.js :', Buffer.byteLength(clientBundle), 'bytes')
 console.log('lib/index.js  :', Buffer.byteLength(nodeHalf), 'bytes')

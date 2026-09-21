@@ -7,16 +7,51 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  /* 与官方底栏同行：占据 dock 行的剩余宽度（左边步数、右边命中率），
+     官方上下文指示器紧跟在右侧；不再自己占满整行并居中。 */
+  flex: 1 1 auto;
+  width: auto;
+  max-width: none;
+  min-width: 0;
   min-height: 24px;
   box-sizing: border-box;
-  width: 100%;
-  max-width: var(--dsh-composer-card-max-width, calc(var(--dsh-chat-content-width, 748px) + 32px));
-  margin: 0 auto;
-  padding: 4px 0 0;
-  font-size: 12px;
+  margin: 0;
+  padding: 0;
+  font-size: var(--dsh-content-font-size-secondary, 12px);
   line-height: 1.5;
   color: var(--dsw-alias-label-secondary);
   font-family: var(--dsw-font-family);
+}
+/* 官方上下文指示器（ContextMeter）与本插件的坞在同一底栏行、且是我们的相邻
+   兄弟（slot 条目不额外包 DOM），所以用相邻兄弟选择器给它套上与本插件一致的
+   胶囊背景：跟随「底栏面板样式」（半透明 / 传统）与「面板玻璃」的模糊、磨砂
+   滑杆（--dsh-dstat-blur / --dsh-dstat-frost）。兜底选择器覆盖上游将来给条目
+   加 wrapper 的情形；只设外观，不动官方点击展开的明细面板，也不干预其 hover。 */
+.dsstat-root + *,
+div:has(> .dsstat-root) > *:last-child {
+  border-radius: 999px;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+.dsstat-root:not(.dsstat-glass) + *,
+div:has(> .dsstat-root:not(.dsstat-glass)) > *:last-child {
+  background: var(--dsw-alias-bg-base);
+  border: 1px solid var(--dsw-alias-border-l1);
+}
+.dsstat-root.dsstat-glass + *,
+div:has(> .dsstat-root.dsstat-glass) > *:last-child {
+  border: 1px solid #132d5342;
+  background-color: color-mix(in srgb, rgb(255 255 255) calc(50% * var(--dsh-dstat-frost, 1)), transparent);
+  background-image: linear-gradient(180deg, color-mix(in srgb, rgb(255 255 255) calc(35% * var(--dsh-dstat-frost, 1)), transparent) 0%, transparent 70%);
+  backdrop-filter: blur(var(--dsh-dstat-blur, 14px)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--dsh-dstat-blur, 14px)) saturate(1.2);
+  box-shadow: inset 0 1px #ffffff80, 0 6px 20px #132d531a;
+}
+body[data-ds-dark-theme] .dsstat-root.dsstat-glass + *,
+body[data-ds-dark-theme] div:has(> .dsstat-root.dsstat-glass) > *:last-child {
+  border-color: #94b4dc52;
+  background-color: color-mix(in srgb, rgb(42 46 56) calc(50% * var(--dsh-dstat-frost, 1)), transparent);
+  background-image: linear-gradient(180deg, color-mix(in srgb, rgb(22 25 34) calc(50% * var(--dsh-dstat-frost, 1)), transparent) 0%, transparent 70%);
+  box-shadow: inset 0 1px #ffffff12, 0 6px 24px #02060e38;
 }
 .dsstat-seg {
   display: inline-flex;
@@ -182,6 +217,20 @@ body[data-ds-dark-theme] .dsstat-glass.dsstat-panel {
   color: var(--dsw-alias-label-primary);
   border-color: var(--dsw-alias-brand-primary);
 }
+/* Settings → General: 底栏统计坞总开关（与插件卡片的开关同一个偏好）。
+   这一行在停用状态下依然渲染，否则关掉后就再也开不回来。 */
+.dsstat-enabled-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+  font-size: 12px;
+  font-family: var(--dsw-font-family);
+}
+.dsstat-enabled-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.dsstat-enabled-label { color: var(--dsw-alias-label-primary); }
+.dsstat-enabled-desc { font-size: 11px; color: var(--dsw-alias-label-tertiary); }
 /* Settings → General: 面板玻璃滑杆。 */
 .dsstat-glass-row {
   display: flex;

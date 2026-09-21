@@ -274,7 +274,7 @@ export function StatsDock(props) {
   // 插件停用时底栏区域留空（官方统计行由本插件占据，不再渲染）。
   if (!enabled) return null
 
-  return React.createElement('div', { className: 'dsstat-root', ref: rootRef },
+  return React.createElement('div', { className: 'dsstat-root' + glass, ref: rootRef },
     seg('seg-steps', leftOpen, () => setLeftOpen(!leftOpen), t('seg.steps'), String(stats.steps)),
     seg('seg-hit', rightOpen, () => setRightOpen(!rightOpen), t('seg.hitRate'), hitRate === null ? '—' : hitRate + '%'),
     leftPanel,
@@ -297,6 +297,29 @@ export function ModeRow() {
     React.createElement('div', { className: 'dsstat-mode-seg' },
       btn(t('mode.translucent'), 'translucent'),
       btn(t('mode.classic'), 'classic'),
+    ),
+  )
+}
+
+// Settings → General: 底栏统计坞总开关（与插件卡片同一个偏好）。
+// 与其他设置行不同，这一行**在停用时也要渲染**，否则关掉后再也开不回来；
+// 切换是即时的：停用即注销本插件的底栏注册，官方统计行自动回位。
+export function EnabledRow() {
+  const enabled = React.useSyncExternalStore(subscribeEnabled, getEnabled)
+  useLocale()
+  return React.createElement('div', { className: 'dsstat-enabled-row' },
+    React.createElement('div', { className: 'dsstat-enabled-text' },
+      React.createElement('div', { className: 'dsstat-enabled-label' }, t('enabled.label')),
+      React.createElement('div', { className: 'dsstat-enabled-desc' }, t('enabled.desc')),
+    ),
+    React.createElement('button', {
+      type: 'button',
+      className: 'dsstat-card-toggle',
+      'aria-pressed': enabled,
+      onClick: () => setEnabled(!enabled),
+    },
+      React.createElement('span', { className: 'dsstat-card-check' }, enabled ? '✓' : ''),
+      enabled ? t('card.on') : t('card.off'),
     ),
   )
 }

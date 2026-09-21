@@ -50,11 +50,13 @@ const zh = {
   'glass.label': '面板玻璃',
   'glass.blur': '模糊度',
   'glass.frost': '磨砂度',
-  'card.desc': '底栏统计坞：性能 / 简报 / Token 明细 / 预估成本',
+  'card.desc': '底栏统计坞：性能 / 简报 / Token 明细 / 预估成本；关闭后恢复 DSH 官方底栏',
   'card.on': '已启用',
   'card.off': '已停用',
   'card.summary.on': '已启用 · 底栏显示性能 / 简报 / Token / 成本',
   'card.summary.off': '已停用 · 使用 DSH 官方底栏统计行',
+  'enabled.label': '底栏统计坞',
+  'enabled.desc': '由本插件接管底栏统计行；关闭后立即恢复 DSH 官方底栏',
 }
 
 const en = {
@@ -99,11 +101,13 @@ const en = {
   'glass.label': 'Panel glass',
   'glass.blur': 'Blur',
   'glass.frost': 'Frost',
-  'card.desc': 'Composer dock stats: performance / brief / tokens / est. cost',
+  'card.desc': 'Composer dock stats: performance / brief / tokens / est. cost; off restores the official line',
   'card.on': 'Enabled',
   'card.off': 'Disabled',
   'card.summary.on': 'Enabled · performance / brief / tokens / cost in the composer dock',
   'card.summary.off': "Disabled · DSH's official stats line is used",
+  'enabled.label': 'Composer dock',
+  'enabled.desc': 'This plugin takes over the composer stats line; turning it off restores the official one',
 }
 
 /** 完整字典（zh/en 键集合一致，注册时由 locale 服务校验双语文档）。 */

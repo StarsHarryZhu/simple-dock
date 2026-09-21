@@ -101,12 +101,15 @@ new bundle rows. After restart, the dynamic per-session copy of this plugin
    ```
 
    → prints `function`.
-3. After restart, in the web UI: the dock shows `步数 N` / `命中率 X%`;
-   the on/off card appears both in `设置 → 插件` (a **Simple Dock** tab) and on
-   the sidebar **Plugins** page as this bundle's configuration;
-   `设置 → 通用设置` shows the four rows (底栏面板样式 / 价格表 /
-   成本计价币种 / 面板玻璃). Check the browser console for
-   `client-modules` load errors if anything is missing.
+3. After restart, in the web UI: the dock row is **`步数 N` on the far left,
+   `命中率 X%` on the right**, followed by DSH's own context indicator whose
+   capsule background follows this plugin's panel style / glass sliders;
+   the on/off switch appears in `设置 → 通用设置` (first row), in
+   `设置 → 插件` (a **Simple Dock** tab) and on the sidebar **Plugins** page as
+   this bundle's configuration — toggling it must swap the official stats line
+   in and out **without a refresh**. `设置 → 通用设置` shows five rows
+   (底栏统计坞 / 底栏面板样式 / 价格表 / 成本计价币种 / 面板玻璃). Check the
+   browser console for `client-modules` load errors if anything is missing.
 4. Cost engine and endpoint (web profile only):
 
    ```sh
@@ -205,12 +208,25 @@ assets/ demo/       screenshots and recordings
 - Slot registrations are plain entries: the on/off card on both
   `settings.plugins.tab` (Settings → Plugins section, id `simple-dock`) and the
   Plugins page's keyed `plugins.bundle.config` (key = this bundle's package
-  name `dsh-ui-simple-dock`), the four rows on `settings.general.item`
-  (ids `dstat-*`), and the composer dock on `conversation.composer.dock`
-  (id `stats`, `priority: -1` to shadow the official stats line).
-  `settings.plugin.item` no longer exists in the 0.1.6 shell: registering into
-  an undeclared slot throws, so a stale slot would drop the card silently while
-  the rest of the plugin keeps working.
+  name `dsh-ui-simple-dock`), five rows on `settings.general.item`
+  (`dstat-enabled` first — the master switch — then `dstat-mode`,
+  `dstat-pricing`, `dstat-currency`, `dstat-glass`), and the composer dock on
+  `conversation.composer.dock` (id `stats`, `priority: -1` to shadow the
+  official stats line). `settings.plugin.item` no longer exists in the 0.1.6
+  shell: registering into an undeclared slot throws, so a stale slot would drop
+  the card silently while the rest of the plugin keeps working.
+- The General master switch row must render **while the dock is disabled** (it
+  is the only way back); the other four rows keep returning null when disabled,
+  like the panels.
+- Dock layout: `.dsstat-root` is `flex: 1 1 auto` inside the official `.dock`
+  row (the official context meter follows it in the same row), with
+  `justify-content: space-between` giving `步数` the left edge and `命中率` the
+  right edge. The context capsule is styled through the **adjacent sibling**
+  `.dsstat-root + *` (slot entries add no wrapper DOM), with a
+  `div:has(> .dsstat-root) > *:last-child` fallback in case upstream inserts
+  one; those rules are cosmetic only and must not touch the official meter's
+  click-open dialog. The `assets/thumbs/*` screenshots in the README predate
+  this row layout — re-shoot them when the row changes.
 - The card component serves both owners: `plugins.bundle.config` asks for a
   `summary` one-liner and a `page` body (`view` prop), the settings tab renders
   the body without a `view`.
