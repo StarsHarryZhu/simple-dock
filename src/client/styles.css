@@ -303,14 +303,27 @@ body[data-ds-dark-theme] .dsstat-glass.dsstat-panel {
 }
 .dsstat-color-items { display: inline-flex; align-items: center; gap: 12px; }
 .dsstat-color-item { display: inline-flex; align-items: center; gap: 6px; }
+/* 与设置页其它项一致的控件风格：小圆角色块 + 十六进制值文本（不用原生的大
+   方块，避免深色主题下显示成两块黑）。 */
 .dsstat-color-input {
-  width: 28px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   padding: 0;
   border: 1px solid var(--dsw-alias-border-l1);
   border-radius: 6px;
   background: transparent;
   cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+.dsstat-color-input::-webkit-color-swatch-wrapper { padding: 0; }
+.dsstat-color-input::-webkit-color-swatch { border: none; border-radius: 5px; }
+.dsstat-color-input:hover { border-color: var(--dsw-alias-brand-primary); }
+.dsstat-color-value {
+  min-width: 62px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--dsw-alias-label-tertiary);
 }
 /* Settings → Simple Dock：独立设置区（设置导航里单开一页）。 */
 .dsstat-section { display: flex; flex-direction: column; gap: 12px; font-family: var(--dsw-font-family); }

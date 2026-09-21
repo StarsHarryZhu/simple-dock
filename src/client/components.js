@@ -542,24 +542,29 @@ export function ColorRow() {
   const glassColor = React.useSyncExternalStore(subscribeColors, getGlassColor)
   const solidColor = React.useSyncExternalStore(subscribeColors, getSolidColor)
   useLocale()
-  // 只有两个取色窗格：半透明模式 / 传统模式。未自定义时窗格显示主题默认的
-  // 近似色（实际渲染仍走主题默认值，直到用户选色后固定为所选颜色）。
-  const picker = (key, label, value, fallback, onChange) => React.createElement('div', { className: 'dsstat-color-item', key },
-    React.createElement('span', { className: 'dsstat-knob-label' }, label),
-    React.createElement('input', {
-      type: 'color',
-      className: 'dsstat-color-input',
-      value: value === '' ? fallback : value,
-      onChange: (e) => onChange(e.target.value),
-      'aria-label': label,
-    }),
-  )
+  // 只有两个取色窗格：半透明模式 / 传统模式。未选色时窗格以白色为起点
+  //（面板此时仍跟随主题默认），选色后固定使用所选颜色；控件是设置页风格的
+  // 小圆角色块 + 十六进制值，而不是原生的大黑块。
+  const picker = (key, label, value, onChange) => {
+    const shown = value === '' ? '#ffffff' : value
+    return React.createElement('div', { className: 'dsstat-color-item', key },
+      React.createElement('span', { className: 'dsstat-knob-label' }, label),
+      React.createElement('input', {
+        type: 'color',
+        className: 'dsstat-color-input',
+        value: shown,
+        onChange: (e) => onChange(e.target.value),
+        'aria-label': label,
+      }),
+      React.createElement('span', { className: 'dsstat-color-value' }, shown.toUpperCase()),
+    )
+  }
   if (!enabled) return null
   return React.createElement('div', { className: 'dsstat-color-row' },
     React.createElement('span', { className: 'dsstat-mode-label' }, t('color.label')),
     React.createElement('div', { className: 'dsstat-color-items' },
-      picker('glass', t('color.glass'), glassColor, darkTheme() ? '#2a2e38' : '#ffffff', setGlassColor),
-      picker('solid', t('color.solid'), solidColor, darkTheme() ? '#15171c' : '#ffffff', setSolidColor),
+      picker('glass', t('color.glass'), glassColor, setGlassColor),
+      picker('solid', t('color.solid'), solidColor, setSolidColor),
     ),
   )
 }

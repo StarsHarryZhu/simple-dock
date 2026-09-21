@@ -253,6 +253,9 @@ export declare function apply(ctx: Context): void;
   if (cssText.includes('dsstat-color-reset')) {
     throw new Error('背景色已去掉「跟随主题」，不应再有重置按钮样式')
   }
+  if (!cssText.includes('.dsstat-color-value') || !cssText.includes('::-webkit-color-swatch')) {
+    throw new Error('背景色控件应是小圆角色块 + 十六进制值（设置页风格），而非原生大方块')
+  }
   // 上下文按钮/面板：结构照官方（圆环 trigger、占比条、图例），背景仍走我们
   // 的面板样式。
   for (const selector of ['.dsstat-ctx-trigger', '.dsstat-ctx-track', '.dsstat-ctx-bar', '.dsstat-ctx-panel', '.dsstat-right-group']) {
