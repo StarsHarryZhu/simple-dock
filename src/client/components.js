@@ -542,20 +542,24 @@ export function ColorRow() {
   const glassColor = React.useSyncExternalStore(subscribeColors, getGlassColor)
   const solidColor = React.useSyncExternalStore(subscribeColors, getSolidColor)
   useLocale()
-  // 只有两个取色窗格：半透明模式 / 传统模式。未选色时窗格以白色为起点
-  //（面板此时仍跟随主题默认），选色后固定使用所选颜色；控件是设置页风格的
-  // 小圆角色块 + 十六进制值，而不是原生的大黑块。
+  // 只有两个取色窗格：半透明模式 / 传统模式。未选色时以白色为起点（面板此时
+  // 仍跟随主题默认），选色后固定使用所选颜色。色块是自绘的（原生 color input
+  // 在深色主题下会把 swatch 渲染成空块，看起来像黑色），透明的 input 盖在其上
+  // 负责弹出系统取色器。
   const picker = (key, label, value, onChange) => {
     const shown = value === '' ? '#ffffff' : value
     return React.createElement('div', { className: 'dsstat-color-item', key },
       React.createElement('span', { className: 'dsstat-knob-label' }, label),
-      React.createElement('input', {
-        type: 'color',
-        className: 'dsstat-color-input',
-        value: shown,
-        onChange: (e) => onChange(e.target.value),
-        'aria-label': label,
-      }),
+      React.createElement('span', { className: 'dsstat-color-field' },
+        React.createElement('span', { className: 'dsstat-color-chip', style: { background: shown } }),
+        React.createElement('input', {
+          type: 'color',
+          className: 'dsstat-color-input',
+          value: shown,
+          onChange: (e) => onChange(e.target.value),
+          'aria-label': label,
+        }),
+      ),
       React.createElement('span', { className: 'dsstat-color-value' }, shown.toUpperCase()),
     )
   }

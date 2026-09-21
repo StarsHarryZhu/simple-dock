@@ -250,9 +250,12 @@ assets/ demo/       screenshots and recordings
   Never target `div:has(> .dsstat-root) > *:last-child`: the outlet wrapper
   matches it and its last child is `.dsstat-root` itself, so the styling would
   land on our own row (the build smoke rejects that selector).
-- Background color settings are two color swatches only (no "follow theme"
-  control): the swatches show the theme-default approximation while the pref is
-  empty, and picking a color pins it. Values write `<html>` variables —
+- Background color settings are two swatches only (no "follow theme" control),
+  drawn by us (`.dsstat-color-chip`) with a transparent native color input on
+  top: Chromium renders the native swatch as an empty/black block on the dark
+  theme, so the chip's background is inline-styled. An unset pref starts from
+  `#ffffff` while the rendered value still falls back to the theme, and picking
+  a color pins it. Values write `<html>` variables —
   `--dsh-dstat-glass-color` (translucent fill, mixed with the frost knob) and
   `--dsh-dstat-solid-color` (classic panel background) — and an empty value
   removes the variable so the theme default applies again. `glassStyle()` reads
