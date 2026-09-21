@@ -5,7 +5,7 @@ import {
   applyGlassVars, getEnabled, subscribeEnabled,
 } from './core.js'
 import {
-  StatsDock, ModeRow, PricingRow, CurrencyRow, GlassRow, ColorRow, PluginCard, EnabledRow,
+  StatsDock, ModeRow, PricingRow, CurrencyRow, GlassRow, ColorRow, PluginCard, EnabledRow, SettingsSection,
 } from './components.js'
 import { NS, dicts, setLocaleFace, t } from './i18n.js'
 import { css } from './styles.js'
@@ -105,32 +105,16 @@ export function apply(ctx) {
     (props) => React.createElement(PluginCard, props),
   ))
 
-  // Settings → General: master on/off row first (it must stay usable while the
-  // dock is disabled, so the switch can be turned back on), then the four
-  // appearance/price rows (labels follow the system locale).
-  slots.inject('settings.general.item', () => slots.register(
-    { name: 'settings.general.item', id: 'dstat-enabled', order: 11, label: () => t('enabled.label') },
-    () => React.createElement(EnabledRow, {}),
-  ))
-  slots.inject('settings.general.item', () => slots.register(
-    { name: 'settings.general.item', id: 'dstat-mode', order: 12, label: () => t('mode.label') },
-    () => React.createElement(ModeRow, {}),
-  ))
-  slots.inject('settings.general.item', () => slots.register(
-    { name: 'settings.general.item', id: 'dstat-pricing', order: 13, label: () => t('pricing.label') },
-    () => React.createElement(PricingRow, {}),
-  ))
-  slots.inject('settings.general.item', () => slots.register(
-    { name: 'settings.general.item', id: 'dstat-currency', order: 14, label: () => t('currency.label') },
-    () => React.createElement(CurrencyRow, {}),
-  ))
-  slots.inject('settings.general.item', () => slots.register(
-    { name: 'settings.general.item', id: 'dstat-glass', order: 15, label: () => t('glass.label') },
-    () => React.createElement(GlassRow, {}),
-  ))
-  // 背景色：半透明模式 / 传统模式各一个取色器（可恢复跟随主题）。
-  slots.inject('settings.general.item', () => slots.register(
-    { name: 'settings.general.item', id: 'dstat-color', order: 16, label: () => t('color.label') },
-    () => React.createElement(ColorRow, {}),
+  // Settings → Simple Dock：独立设置区（设置导航里单开一页），全部设置集中在
+  // 这一页；通用设置里不再散落我们的行。
+  slots.inject('settings.section', () => slots.register(
+    {
+      name: 'settings.section',
+      id: 'simple-dock',
+      order: 60,
+      label: () => 'Simple Dock',
+      locale: NS,
+    },
+    (props) => React.createElement(SettingsSection, props),
   ))
 }

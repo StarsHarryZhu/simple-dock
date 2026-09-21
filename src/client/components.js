@@ -542,29 +542,44 @@ export function ColorRow() {
   const glassColor = React.useSyncExternalStore(subscribeColors, getGlassColor)
   const solidColor = React.useSyncExternalStore(subscribeColors, getSolidColor)
   useLocale()
-  const picker = (key, label, value, onChange) => React.createElement('div', { className: 'dsstat-color-item', key },
+  // 只有两个取色窗格：半透明模式 / 传统模式。未自定义时窗格显示主题默认的
+  // 近似色（实际渲染仍走主题默认值，直到用户选色后固定为所选颜色）。
+  const picker = (key, label, value, fallback, onChange) => React.createElement('div', { className: 'dsstat-color-item', key },
     React.createElement('span', { className: 'dsstat-knob-label' }, label),
     React.createElement('input', {
       type: 'color',
       className: 'dsstat-color-input',
-      // 未自定义时取色器需要一个具体值（深色主题默认偏冷灰，浅色默认白）。
-      value: value === '' ? (darkTheme() ? '#2a2e38' : '#ffffff') : value,
+      value: value === '' ? fallback : value,
       onChange: (e) => onChange(e.target.value),
       'aria-label': label,
     }),
-    React.createElement('button', {
-      type: 'button',
-      className: 'dsstat-color-reset' + (value === '' ? ' active' : ''),
-      disabled: value === '',
-      onClick: () => onChange(''),
-    }, t('color.reset')),
   )
   if (!enabled) return null
   return React.createElement('div', { className: 'dsstat-color-row' },
     React.createElement('span', { className: 'dsstat-mode-label' }, t('color.label')),
     React.createElement('div', { className: 'dsstat-color-items' },
-      picker('glass', t('color.glass'), glassColor, setGlassColor),
-      picker('solid', t('color.solid'), solidColor, setSolidColor),
+      picker('glass', t('color.glass'), glassColor, darkTheme() ? '#2a2e38' : '#ffffff', setGlassColor),
+      picker('solid', t('color.solid'), solidColor, darkTheme() ? '#15171c' : '#ffffff', setSolidColor),
+    ),
+  )
+}
+
+// Settings → Simple Dock 独立设置区：把所有设置集中在一页（通用设置里不再
+// 散落我们的行）。各行组件自带 disabled 处理（总开关行除外，它必须始终可点）。
+export function SettingsSection() {
+  useLocale()
+  return React.createElement('div', { className: 'dsstat-section' },
+    React.createElement('div', { className: 'dsstat-section-head' },
+      React.createElement('div', { className: 'dsstat-section-title' }, 'Simple Dock'),
+      React.createElement('div', { className: 'dsstat-section-desc' }, t('card.desc')),
+    ),
+    React.createElement('div', { className: 'dsstat-section-body' },
+      React.createElement(EnabledRow, {}),
+      React.createElement(ModeRow, {}),
+      React.createElement(GlassRow, {}),
+      React.createElement(ColorRow, {}),
+      React.createElement(CurrencyRow, {}),
+      React.createElement(PricingRow, {}),
     ),
   )
 }

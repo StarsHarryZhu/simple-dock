@@ -106,13 +106,15 @@ new bundle rows. After restart, the dynamic per-session copy of this plugin
    and no background while collapsed, and **at most one panel open** (another
    button, an outside click, or Esc closes it). DSH's own context meter must be
    hidden while this plugin owns the row (we render that data ourselves); it
-   reappears while the plugin is disabled. The on/off switch appears in
-   `设置 → 通用设置` (first row), in `设置 → 插件` (a **Simple Dock** tab) and on
-   the sidebar **Plugins** page as this bundle's configuration — toggling it
-   must swap the official stats line in and out **without a refresh**.
-   `设置 → 通用设置` shows six rows (底栏统计坞 / 底栏面板样式 / 价格表 /
-   成本计价币种 / 面板玻璃 / 背景色). Check the browser console for
-   `client-modules` load errors if anything is missing.
+   reappears while the plugin is disabled. The on/off switch appears on the
+   dedicated **Simple Dock** settings page (`settings.section`), in
+   `设置 → 插件` (a **Simple Dock** tab) and on the sidebar **Plugins** page as
+   this bundle's configuration — toggling it must swap the official stats line
+   in and out **without a refresh**. That settings page carries the whole
+   surface (总开关 / 底栏面板样式 / 面板玻璃 / 背景色 / 成本计价币种 /
+   价格表) and the General section must **not** list any of these rows anymore.
+   Check the browser console for `client-modules` load errors if anything is
+   missing.
 4. Cost engine and endpoint (web profile only):
 
    ```sh
@@ -208,20 +210,20 @@ assets/ demo/       screenshots and recordings
   session with no usable record (absent, or written under a different
   `PRICE_VERSION`) is fully re-priced and written back, which is the
   fresh-install backfill path.
-- Slot registrations are plain entries: the on/off card on both
-  `settings.plugins.tab` (Settings → Plugins section, id `simple-dock`) and the
-  Plugins page's keyed `plugins.bundle.config` (key = this bundle's package
-  name `dsh-ui-simple-dock`), six rows on `settings.general.item`
-  (`dstat-enabled` first — the master switch — then `dstat-mode`,
-  `dstat-pricing`, `dstat-currency`, `dstat-glass`, `dstat-color`), and the
-  composer dock on
-  `conversation.composer.dock` (id `stats`, `priority: -1` to shadow the
-  official stats line). `settings.plugin.item` no longer exists in the 0.1.6
-  shell: registering into an undeclared slot throws, so a stale slot would drop
-  the card silently while the rest of the plugin keeps working.
-- The General master switch row must render **while the dock is disabled** (it
-  is the only way back); the other five rows keep returning null when disabled,
-  like the panels.
+- Slot registrations are plain entries: the dedicated settings page on
+  `settings.section` (id `simple-dock`, the whole surface in one page — master
+  switch, panel style, glass sliders, background colors, currency, price table),
+  the on/off card on both `settings.plugins.tab` (Settings → Plugins section,
+  id `simple-dock`) and the Plugins page's keyed `plugins.bundle.config`
+  (key = this bundle's package name `dsh-ui-simple-dock`), and the composer dock
+  on `conversation.composer.dock` (id `stats`, `priority: -1` to shadow the
+  official stats line). Nothing registers into `settings.general.item` anymore
+  (the smoke rejects it), and `settings.plugin.item` no longer exists in the
+  0.1.6 shell: registering into an undeclared slot throws, so a stale slot would
+  drop the card silently while the rest of the plugin keeps working.
+- The master switch row must render **while the dock is disabled** (it is the
+  only way back); the appearance rows return null when disabled, like the
+  panels.
 - Dock layout: the slot outlet wraps every entry in a layout-neutral
   `[data-slot="conversation.composer.dock"]` anchor (`display: contents`), so
   `.dsstat-root` is itself a flex item of the official `.dock` row and its
@@ -248,13 +250,16 @@ assets/ demo/       screenshots and recordings
   Never target `div:has(> .dsstat-root) > *:last-child`: the outlet wrapper
   matches it and its last child is `.dsstat-root` itself, so the styling would
   land on our own row (the build smoke rejects that selector).
-- Background color settings write `<html>` variables — `--dsh-dstat-glass-color`
-  (translucent fill, mixed with the frost knob) and `--dsh-dstat-solid-color`
-  (classic panel background) — and an empty value removes the variable so the
-  theme default applies again. `glassStyle()` reads the glass variable with the
-  theme-default fallback; `.dsstat-panel` reads the solid one with
-  `--dsw-alias-bg-base` as fallback. The `assets/thumbs/*` screenshots in the
-  README predate this row layout — re-shoot them when the row changes.
+- Background color settings are two color swatches only (no "follow theme"
+  control): the swatches show the theme-default approximation while the pref is
+  empty, and picking a color pins it. Values write `<html>` variables —
+  `--dsh-dstat-glass-color` (translucent fill, mixed with the frost knob) and
+  `--dsh-dstat-solid-color` (classic panel background) — and an empty value
+  removes the variable so the theme default applies again. `glassStyle()` reads
+  the glass variable with the theme-default fallback; `.dsstat-panel` reads the
+  solid one with `--dsw-alias-bg-base` as fallback. The `assets/thumbs/*`
+  screenshots in the README predate this row layout — re-shoot them when the row
+  changes.
 - The card component serves both owners: `plugins.bundle.config` asks for a
   `summary` one-liner and a `page` body (`view` prop), the settings tab renders
   the body without a `view`.

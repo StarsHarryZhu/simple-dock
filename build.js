@@ -205,11 +205,11 @@ export declare function apply(ctx: Context): void;
   }
   new Function(clientBundle)()
   const names = registrations.map((entry) => entry.name)
-  // 0.1.6 的槽位契约：dock 遮蔽官方 stats 行、Settings → Plugins 的 tab、
-  // Plugins 页的 keyed bundle 配置、以及通用设置四行。
+  // 0.1.6 的槽位契约：dock 遮蔽官方 stats 行、独立设置区、Settings → Plugins 的
+  // tab、Plugins 页的 keyed bundle 配置。
   for (const required of [
     'conversation.composer.dock',
-    'settings.general.item',
+    'settings.section',
     'settings.plugins.tab',
     'plugins.bundle.config',
   ]) {
@@ -218,12 +218,11 @@ export declare function apply(ctx: Context): void;
   if (names.includes('settings.plugin.item')) {
     throw new Error('settings.plugin.item 在新版已不存在，不应再注册')
   }
-  const generalRows = registrations.filter((entry) => entry.name === 'settings.general.item')
-  if (generalRows.length !== 6) throw new Error('settings.general.item 应有 6 行（开关 / 样式 / 价格表 / 币种 / 玻璃 / 背景色），实际 ' + String(generalRows.length))
-  const generalIds = generalRows.map((entry) => entry.id)
-  for (const required of ['dstat-enabled', 'dstat-color']) {
-    if (!generalIds.includes(required)) throw new Error('通用设置缺少行 ' + required + '（实际 ' + generalIds.join(', ') + '）')
+  if (names.includes('settings.general.item')) {
+    throw new Error('设置已集中到独立的 Simple Dock 设置区，通用设置里不该再有本插件的行')
   }
+  const section = registrations.find((entry) => entry.name === 'settings.section')
+  if (section.id !== 'simple-dock') throw new Error('设置区的 id 应为 simple-dock')
   const bundleConfig = registrations.find((entry) => entry.name === 'plugins.bundle.config')
   if (bundleConfig.key !== 'dsh-ui-simple-dock') throw new Error('plugins.bundle.config 的 key 应为 bundle 包名')
   const dock = registrations.find((entry) => entry.name === 'conversation.composer.dock')
@@ -247,6 +246,12 @@ export declare function apply(ctx: Context): void;
   }
   if (!cssText.includes('.dsstat-color-row')) {
     throw new Error('缺少背景色设置行的样式（.dsstat-color-row）')
+  }
+  if (!cssText.includes('.dsstat-section-body')) {
+    throw new Error('缺少独立设置区的样式（.dsstat-section*）')
+  }
+  if (cssText.includes('dsstat-color-reset')) {
+    throw new Error('背景色已去掉「跟随主题」，不应再有重置按钮样式')
   }
   // 上下文按钮/面板：结构照官方（圆环 trigger、占比条、图例），背景仍走我们
   // 的面板样式。
