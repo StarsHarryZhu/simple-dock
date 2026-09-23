@@ -1,5 +1,9 @@
 # Simple Dock V0.1 — DSH 底栏统计插件
 
+> **⚠️ 已弃用（Deprecated，2026-09-21）** —— 本项目已停止维护。插件已从作者的 DSH web profile **取消挂载**：`~/.dsh/profiles/web/cordis.patch.yml` 中的挂载行与 `~/.dsh/profiles/node_modules/dsh-ui-simple-dock` 软链接均已移除（重启 DSH 后不再加载）。源码、文档与安装步骤原样保留，供参考或自行恢复；不再更新、不再处理 issue 或修复缺陷。
+>
+> **Deprecated (2026-09-21)** — no longer maintained. The plugin has been **unmounted** from the author's DSH web profile (both the `cordis.patch.yml` row and the `node_modules` symlink are gone, so a restarted DSH no longer loads it). The source, docs and install steps remain for reference or self-restoration; no further updates, issue triage or fixes are planned.
+
 替换 DeepSeek Harness 网页端底栏的官方统计行，改成**左右双区、点击展开明细**的交互式统计坞。深浅色自适应，不依赖任何其他插件。界面文案**中英文双语，跟随 DSH 系统语言设置**（`设置 → 通用 → 语言`），无需单独切换。
 
 ## 安装
